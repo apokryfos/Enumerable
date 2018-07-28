@@ -3,6 +3,6 @@
 namespace Apokryfos\Exceptions;
 
 
-class CombineSizeMismatchException extends \Exception {
+class CombineSizeMismatchException extends MismatchException {
 
 }

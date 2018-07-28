@@ -3,70 +3,22 @@
 namespace Apokryfos;
 use Apokryfos\Helpers\EventEmitter;
 use Apokryfos\Helpers\GeneratorHelpers;
+use Apokryfos\Helpers\HigherOrderProxy;
 use Apokryfos\Helpers\SelectorHelpers;
 
-
-/**
-min
-mode
-nth
-only
-pad
-partition
-pipe
-pluck
-pop
-prepend
-pull
-push
-put
-random
-reduce
-reject
-reverse
-search
-shift
-shuffle
-slice
-sort
-sortBy
-sortByDesc
-sortKeys
-sortKeysDesc
-splice
-split
-sum
-take
-tap
-times
-toArray
-toJson
-transform
-union
-unique
-uniqueStrict
-unless
-unwrap
-values
-when
-where
-whereStrict
-whereIn
-whereInStrict
-whereInstanceOf
-whereNotIn
-whereNotInStrict
-wrap
-zip
- */
-
-class Enumerable implements \Iterator, \Countable {
+class Enumerable implements \Iterator, \JsonSerializable {
 
     use EventEmitter;
 
     protected $generator;
     protected $inner;
     protected $size = null;
+
+    protected static $higherOrderMethods = [
+        'average', 'avg', 'each', 'every', 'filter',
+        'first', 'flatMap', 'keyBy', 'map', 'max', 'min',
+        'reject', 'sum'
+    ];
 
 
     /**
@@ -123,6 +75,10 @@ class Enumerable implements \Iterator, \Countable {
         $this->generator = GeneratorHelpers::asGenerator($this->inner);
         $this->emit('cached');
         return $this->inner;
+    }
+
+    public function toJson() {
+        return json_encode($this);
     }
 
     /**
@@ -206,7 +162,6 @@ class Enumerable implements \Iterator, \Countable {
     }
 
 
-
     public function crossJoin(...$values) {
         $this->generator = GeneratorHelpers::crossJoin($this->generator, ...$values);
         return $this;
@@ -248,14 +203,58 @@ class Enumerable implements \Iterator, \Countable {
         return $this->diffKeys(array_flip($keys));
     }
 
+    public function only($keys) {
+        return $this->intersectByKeys(array_flip($keys));
+    }
+
     public function filter($callback = null) {
         $this->generator = GeneratorHelpers::filter($this->generator, $callback);
         return $this;
     }
 
-    public function every($callback = null, $keepOpen = false) {
+    public function where($keySelector, $operator = null, $valueSelector = null) {
+        $callback = SelectorHelpers::whereSelector($keySelector, $operator, $valueSelector);
+        return $this->filter($callback);
+    }
+    public function whereStrict($keySelector, $operator = null, $valueSelector = null) {
+        $remap = [
+            null => "===",
+            "==" => "===",
+            "!=" => "!=="
+        ];
+        $operator = $remap[$operator] ?? $operator;
+        return $this->where($keySelector, $operator, $valueSelector);
+    }
+
+    public function whereIn($keySelector, $array, $strict = false, $negate = false) {
+        $selector = SelectorHelpers::selector($keySelector);
+        return $this->filter(function ($value, $key) use ($selector, $array, $strict, $negate) {
+            $in = in_array($selector($value, $key), $array, $strict);
+            return $negate ? !$in : $in;
+        });
+    }
+
+    public function whereNotIn($keySelector, $array, $strict = false) {
+        return $this->whereIn($keySelector, $array, $strict, true);
+    }
+
+    public function whereNotInStrict($keySelector, $array) {
+        return $this->whereNotIn($keySelector, $array, true);
+    }
+
+    public function whereInStrict($keySelector, $array) {
+        return $this->whereIn($keySelector, $array, true);
+    }
+
+    public function whereInstanceOf($class) {
+        return $this->filter(function ($value) use ($class) {
+           return $value instanceof $class;
+        });
+    }
+
+    public function every($callback = null) {
         $callback = SelectorHelpers::selector($callback);
-        foreach ($this->stream($keepOpen) as $key => $item) {
+        foreach ($this->stream() as $key => $item) {
             if (!$callback($item, $key)) {
                 return false;
             }
@@ -274,41 +273,28 @@ class Enumerable implements \Iterator, \Countable {
     }
 
 
-    public function nthElement(int $n, $callback = null, $operator = null, $valueSelector = null, bool $keepOpen = false) {
-        $elements = [];
+    public function nthElement(int $n) {
         $nth = null;
-        $callback = SelectorHelpers::whereSelector($callback, $operator, $valueSelector);
         $seen = 0;
-        if (!$keepOpen) {
-            $this->emit('closing');
-        }
+        $this->emit('closing');
         foreach ($this->generator as $key => $value) {
-            if ($keepOpen) {
-                $elements[$key] = $value;
+            $nth = [$value, $key];
+            $seen++;
+            if ($seen === $n) {
+                break;
             }
-            if ($callback($value, $key)) {
-                $nth = [ $value, $key ];
-                $seen++;
-                if ($seen === $n) {
-                    break;
-                }
-            }
-        }
 
-        if (!$keepOpen) {
-            $this->emit('closed');
-        } else {
-            $this->generator = GeneratorHelpers::prepend($this->generator, $elements);
         }
+        $this->emit('closed');
         return $nth;
     }
 
-    public function first($callback = null, $operator = null, $valueSelector = null, $keepOpen = false) {
-        return $this->nthElement(1, $callback, $operator, $valueSelector, $keepOpen);
+    public function first($callback = null, $operator = null, $valueSelector = null) {
+        return $this->where($callback, $operator, $valueSelector)->nthElement(1);
     }
 
-    public function firstWhere($callback = null, $operator = null, $valueSelector = null, $keepOpen = false) {
-        return $this->first($callback, $operator, $valueSelector, $keepOpen);
+    public function firstWhere($callback = null, $operator = null, $valueSelector = null) {
+        return $this->first($callback, $operator, $valueSelector);
     }
 
     public function map($callback = null) {
@@ -349,9 +335,9 @@ class Enumerable implements \Iterator, \Countable {
         return $value !== null;
     }
 
-    public function implode(string $character, $keepOpen = false) {
+    public function implode(string $character) {
         $str = null;
-        foreach ($this->stream($keepOpen) as $value) {
+        foreach ($this->stream() as $value) {
             $str = $str !== null ? $character.strval($value) : strval($value);
         }
         return $str;
@@ -386,19 +372,19 @@ class Enumerable implements \Iterator, \Countable {
     }
 
 
-    public function make() {
+    public static function make() {
         return new self();
     }
 
 
-    public function last($callback = null, $operator = null, $valueSelector = null, $keepOpen = false) {
-       return $this->nthElement(PHP_INT_MAX, $callback, $operator, $valueSelector, $keepOpen);
+    public function last($callback = null, $operator = null, $valueSelector = null) {
+       return $this->nthElement(PHP_INT_MAX, $callback, $operator, $valueSelector);
     }
 
     public function mapInto($class, $transformToCtorArgs = null) {
         $callback = SelectorHelpers::selector($transformToCtorArgs);
-        return $this->map(function ($value, $key) use ($class, $callback) {
-            return new $class($callback($value,$key));
+        return $this->map($callback)->map(function ($value) use ($class) {
+            return new $class($value);
         });
     }
 
@@ -414,10 +400,10 @@ class Enumerable implements \Iterator, \Countable {
         return $this;
     }
 
-    public function reduce($callback, $initial, $keepOpen = false) {
+    public function reduce($callback, $initial) {
         $next = $initial;
         $count = 0;
-        foreach ($this->stream($keepOpen) as $key => $value) {
+        foreach ($this->stream() as $key => $value) {
             $next = $callback($next, $value, $key);
             $count ++;
         }
@@ -433,11 +419,11 @@ class Enumerable implements \Iterator, \Countable {
      * @param bool $keepOpen Whether the internal generator should be cached and reopened
      * @return float The sum
      */
-    public function sum(callable $mappingFunction = null, $keepOpen = false) {
+    public function sum(callable $mappingFunction = null) {
         $mapWith = SelectorHelpers::selector($mappingFunction);
-        return $this->reduce(function ($sum, $value, $key) use ($mapWith) {
-            return $sum+$mapWith($value, $key);
-        }, 0, $keepOpen);
+        return $this->map($mapWith)->reduce(function ($sum, $value, $key) {
+            return $sum+$value;
+        }, 0);
     }
 
 
@@ -446,8 +432,8 @@ class Enumerable implements \Iterator, \Countable {
      * @param callable|null $callable
      * @return float The average
      */
-    public function average(callable $callable = null, $keepOpen = false) : float {
-        return  $this->sum($callable, $keepOpen) / $this->count();
+    public function average(callable $callable = null) : float {
+        return  $this->sum($callable) / $this->count();
     }
 
     /**
@@ -459,8 +445,7 @@ class Enumerable implements \Iterator, \Countable {
 
     public function max($callback = null) {
         $mapWith = SelectorHelpers::selector($callback);
-        return $this->reduce(function ($currentMax, $value, $key) use ($mapWith) {
-            $current = $mapWith($value, $key);
+        return $this->map($mapWith)->reduce(function ($currentMax, $current) {
             return $currentMax === null || $current > $currentMax ? $current : $currentMax;
         }, null);
     }
@@ -468,8 +453,7 @@ class Enumerable implements \Iterator, \Countable {
 
     public function min($callback = null) {
         $mapWith = SelectorHelpers::selector($callback);
-        return $this->reduce(function ($currentMin, $value, $key) use ($mapWith) {
-            $current = $mapWith($value, $key);
+        return $this->map($mapWith)->reduce(function ($currentMin, $current) {
             return $currentMin === null || $current < $currentMin ? $current : $currentMin;
         }, null);
     }
@@ -481,13 +465,13 @@ class Enumerable implements \Iterator, \Countable {
      * @param bool $keepOpen
      * @return float|int
      */
-    public function median($callback = null, $keepOpen = false) {
+    public function median($callback = null) {
         $mapWith = SelectorHelpers::selector($callback);
         $minHeap = new \SplMinHeap();
         $current = null;
         // Populate a min heap
-        foreach ($this->stream($keepOpen) as $key => $value) {
-            $minHeap->insert($mapWith($value,$key));
+        foreach ($this->map($mapWith)->stream() as $key => $value) {
+            $minHeap->insert($value);
         }
         //Get half the elements out
         $count = $minHeap->count();
@@ -502,13 +486,12 @@ class Enumerable implements \Iterator, \Countable {
     }
 
 
-    public function countValues($callback = null, $keepOpen = false) {
+    public function countValues($callback = null) {
         $callback = SelectorHelpers::selector($callback);
         $counts = [];
         $total = 0;
-        foreach ($this->stream($keepOpen) as $key => $item) {
-            $index = $callback($item, $key);
-            $counts[$index] = ($counts[$index] ?? 0) + 1;
+        foreach ($this->map($callback)->stream() as $key => $item) {
+            $counts[$item] = ($counts[$item] ?? 0) + 1;
             $total++;
         }
         return $counts;
@@ -516,16 +499,98 @@ class Enumerable implements \Iterator, \Countable {
     }
 
 
-    public function mode($callback = null, $keepOpen = false) {
-        $countValues = $this->countValues($callback, $keepOpen);
+    public function mode($callback = null) {
+        $countValues = $this->countValues($callback);
         arsort($countValues);
         return key($countValues);
     }
 
-    public function nth($n, $keepOpen = false) {
-
+    public function nth($n) {
+        $this->generator = GeneratorHelpers::nth($n);
+        return $this;
     }
 
+
+    public function pad($n, $padValue = null) {
+        $this->generator = GeneratorHelpers::pad($this->generator, $n, $padValue);
+        return $this;
+    }
+
+
+    public function pluck($selector = null) {
+        return $this->map(SelectorHelpers::selector($selector));
+    }
+
+    public function prepend(...$item) {
+        $this->generator = GeneratorHelpers::prepend($this->generator, $item);
+        return $this;
+    }
+
+    public function reject($rejector, $operator = null, $where = null) {
+        $callback = SelectorHelpers::whereSelector($rejector, $operator, $where);
+        return $this->filter(function ($value, $key) use ($callback) {
+            return !$callback($value, $key);
+        });
+    }
+
+    public function shift() {
+        $first = $this->next();
+        return $first;
+    }
+
+    public function slice($from, $size) {
+        $this->generator = GeneratorHelpers::slice($this->generator, $from, $size);
+        return $this;
+    }
+
+    public function splice($from, $size, $replacement = null) {
+        $this->generator = GeneratorHelpers::splice($this->generator, $from, $size, $replacement);
+        return $this;
+    }
+
+    public function tap($callback) {
+        $callback($this);
+        return $this;
+    }
+
+
+    public static function times($n, $callback) {
+        return new self(GeneratorHelpers::timesGenerator($n, $callback));
+    }
+
+    public function union($array) {
+        $this->generator = GeneratorHelpers::union($this->generator, $array);
+        return $this;
+    }
+
+    public function when($condition, $callback) {
+        if ($condition) {
+            $callback($this);
+        }
+        return $this;
+    }
+
+    public function unless($condition, $callback) {
+        return $this->when(!$condition, $callback);
+    }
+
+    public static function wrap($something) {
+        return new self($something);
+    }
+
+    public static function unwrap($something) {
+        return self::wrap($something)->all();
+    }
+
+    public function values() {
+        $this->generator = GeneratorHelpers::values($this->generator);
+        return $this;
+    }
+
+    public function zip($other, $ignoreMismatches = false) {
+        $this->generator = GeneratorHelpers::zip($this->generator, $other, $ignoreMismatches);
+        return $this;
+    }
 
     /**
      * Return the current element
@@ -578,21 +643,21 @@ class Enumerable implements \Iterator, \Countable {
         $this->generator->rewind();
     }
 
+
     /**
-     * Count elements of an object
-     * @link http://php.net/manual/en/countable.count.php
-     * @return int The custom count as an integer.
-     * </p>
-     * <p>
-     * The return value is cast to an integer.
-     * @since 5.1.0
+     * Specify data which should be serialized to JSON
+     * @link http://php.net/manual/en/jsonserializable.jsonserialize.php
+     * @return mixed data which can be serialized by <b>json_encode</b>,
+     * which is a value of any type other than a resource.
+     * @since 5.4.0
      */
-    public function count() {
-        if ($this->size !== null) {
-            return $this->size;
+    public function jsonSerialize() {
+        return $this->all();
+    }
+
+    public function __get($name) {
+        if (in_array($name, self::$higherOrderMethods)) {
+            return new HigherOrderProxy($this, $name);
         }
-        return $this->reduce(function ($size) {
-            return $size + 1;
-        }, 0, true);
     }
 }

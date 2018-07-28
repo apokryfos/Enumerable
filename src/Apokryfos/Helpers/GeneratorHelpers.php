@@ -5,6 +5,7 @@ namespace Apokryfos\Helpers;
 
 
 use Apokryfos\Exceptions\CombineSizeMismatchException;
+use Apokryfos\Exceptions\MismatchException;
 use Apokryfos\Exceptions\NotAnIteratorException;
 
 class GeneratorHelpers {
@@ -230,7 +231,7 @@ class GeneratorHelpers {
         yield from $values;
     }
 
-    public static function splice(\Generator $generator, $offset, $length, $replacement) {
+    public static function splice(\Generator $generator, $offset, $length, $replacement = null) {
         for ($atIndex = 0;$atIndex < $offset;$atIndex++) {
             yield $generator->next();
         }
@@ -242,8 +243,59 @@ class GeneratorHelpers {
         yield from $generator;
     }
 
+    public static function slice(\Generator $generator, $offset, $length) {
+        for ($atIndex = 0;$atIndex < $offset;$atIndex++) {
+            $generator->next();
+        }
+        yield from self::take($generator, $length);
+    }
 
+    public static function nth(\Generator $generator, $n) {
+        $i = 0;
+        foreach ($generator as $key => $value) {
+            if ($i > 0 && $i%$n == 0) {
+                yield $key => $value;
+            }
+            $i++;
+        }
+    }
 
+    public static function pad(\Generator $generator, $n, $padding = null) {
+        $count = 0;
+        foreach ($generator as $key => $value) {
+            yield $key => $value;
+            $count++;
+        }
+        while ($count < $n) {
+            yield $padding;
+            $count++;
+        }
+    }
 
+    public static function timesGenerator($n, $callback) {
+        for ($i = 0; $i < $n;$i++) {
+            yield $callback($i);
+        }
+    }
+
+    public static function union(\Generator $generator, $array) {
+        foreach ($generator as $key => $value) {
+            if (array_key_exists($key, $array)) {
+                unset($array[$key]);
+                yield $key => $value;
+            }
+        }
+        yield from $array;
+    }
+
+    public static function zip(\Generator $generator, $array, $ignoreMismatches = false) {
+        foreach ($generator as $key => $item) {
+            if (!array_key_exists($key,$array) && !$ignoreMismatches) {
+                throw new MismatchException("Given array does not match all keys in the generator");
+            } else {
+                yield $item => $array[$key];
+            }
+        }
+    }
 
 }
