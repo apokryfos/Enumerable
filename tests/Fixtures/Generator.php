@@ -7,19 +7,23 @@ class Generator {
 
     private static $defaultValuesPool = "ABCDEFGHIJKLMNOPQRSTWXYZabcdefghijklmnopqrstwxwy012345679";
 
-    public static function randomValue($values = null, $minimumValueLength = 1, $maximumValueLength = 10) {
+    public static function randomValue($values = null, $minimumValueLength = 1, $maximumValueLength = 10, $nullProbability = 0) {
+        if (rand(1, 1000000)/1000000 <= $nullProbability) {
+            return null;
+        }
         $pool = str_split($values ?? self::$defaultValuesPool);
         shuffle($pool);
         return implode("", array_slice($pool, 0, rand($minimumValueLength, $maximumValueLength)));
     }
 
-    public static function randomArray($size = 10, $values = null, $minimumValueLength = 1, $maximumValueLength = 10, $randomKeys = false) {
+    public static function randomArray($size = 10, $values = null, $minimumValueLength = 1, $maximumValueLength = 10, $randomKeys = false, $nullProbability = 0) {
         $result = [];
-        foreach (range(1, $size) as $key) {
+        while (count($result) < $size) {
+            $value = self::randomValue($values, $minimumValueLength, $maximumValueLength, $nullProbability);
             if ($randomKeys) {
-                $result[self::randomValue($values, $minimumValueLength, $maximumValueLength)] = self::randomValue($values, $minimumValueLength, $maximumValueLength);
+                $result[self::randomValue($values, $minimumValueLength, $maximumValueLength)] = $value;
             } else {
-                $result[] = self::randomValue($values, $minimumValueLength, $maximumValueLength);
+                $result[] = $value;
             }
         }
         return $result;
@@ -30,8 +34,8 @@ class Generator {
     }
 
 
-    public static function randomNumbersArray($size=10) {
-        return array_map('intval', self::randomArray($size, "0123456789"));
+    public static function randomNumbersArray($size=10, $nullProbablilty = 0) {
+        return array_map('intval', self::randomArray($size, "0123456789", 1, 10, false, $nullProbablilty));
     }
 
     public static function randomGrid($width, $height, $size = 10, $values = null, $minimumValueLength = 1, $maximumValueLength = 10) {

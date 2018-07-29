@@ -28,5 +28,6 @@ class Event {
         if ($name === 'parameters') {
             return $this->eventParameters;
         }
+        throw new \BadMethodCallException("Attempted to get $name but it is not a valid property");
     }
 }

@@ -21,17 +21,26 @@ class SelectorHelpers {
         } else {
             $otherSelector = self::selector($value);
         }
-        if (array_key_exists($operator, self::$pemittedOperators)) {
-            return function ($value, $key) use ($keySelector, $otherSelector, $operator) {
-                $res = false;
-                $selectedLHS = $keySelector($value,  $key);
-                $selectedRHS = $otherSelector($value, $key);
-                eval("\$res = \$selectedLHS $operator \$selectedRHS");
-                return $res;
-            };
-        }
+        $operator = $operator && array_key_exists($operator, self::$pemittedOperators) ? $operator : "==";
+        return function ($value, $key) use ($keySelector, $otherSelector, $operator) {
+            $selectedLHS = $keySelector($value,  $key);
+            $selectedRHS = $otherSelector($value, $key);
+            if ($operator == "==") { return $selectedLHS == $selectedRHS; }
+            if ($operator == "===") { return $selectedLHS === $selectedRHS; }
+            if ($operator == "!=") { return $selectedLHS != $selectedRHS; }
+            if ($operator == "!==") { return $selectedLHS !== $selectedRHS; }
+            if ($operator == "<") { return $selectedLHS < $selectedRHS; }
+            if ($operator == ">") { return $selectedLHS > $selectedRHS; }
+            if ($operator == "<=") { return $selectedLHS <= $selectedRHS; }
+            if ($operator == ">=") { return $selectedLHS >= $selectedRHS; }
+            return $selectedLHS == $selectedRHS;
+        };
+    }
 
-
+    public static function constant($value) {
+        return function () use ($value) {
+            return $value;
+        };
     }
 
     public static function identity() {
@@ -53,16 +62,21 @@ class SelectorHelpers {
         if (is_callable($selector)) {
             return $selector;
         }
+        if (!is_scalar($selector)) {
+            return self::constant($selector);
+        }
 
-        return function($value, $key) use ($selector) {
-            if ($value instanceof \ArrayAccess && $value->offsetExists($selector)) {
-                return $value->offsetGet($selector);
-            }
-            if (!is_scalar($selector)) {
-                return $selector;
-            }
+        return function($value) use ($selector) {
             if (method_exists($value, $selector)) {
                 return $value->$selector();
+            }
+            if (is_int($selector) || is_string($selector)) {
+                if (is_array($value) && array_key_exists($selector, $value)) {
+                    return $value[$selector];
+                }
+                if ($value instanceof \ArrayAccess && $value->offsetExists($selector)) {
+                    return $value->offsetGet($selector);
+                }
             }
             return $selector;
         };
@@ -86,6 +100,10 @@ class SelectorHelpers {
                         || ($key !== $key2 && $keyHandling == GeneratorHelpers::DIFF_ONLY_KEY)) {
                         return false;
                     }
+                    return true;
+                };
+            default:
+                return function () use ($keyHandling) {
                     return true;
                 };
         }

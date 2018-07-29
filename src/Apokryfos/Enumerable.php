@@ -6,6 +6,23 @@ use Apokryfos\Helpers\GeneratorHelpers;
 use Apokryfos\Helpers\HigherOrderProxy;
 use Apokryfos\Helpers\SelectorHelpers;
 
+
+/**
+ * @property-read HigherOrderProxy $average
+ * @property-read HigherOrderProxy $avg
+ * @property-read HigherOrderProxy $each
+ * @property-read HigherOrderProxy $every
+ * @property-read HigherOrderProxy $filter
+ * @property-read HigherOrderProxy $first
+ * @property-read HigherOrderProxy $flatMap
+ * @property-read HigherOrderProxy $keyBy
+ * @property-read HigherOrderProxy $map
+ * @property-read HigherOrderProxy $max
+ * @property-read HigherOrderProxy $mix
+ * @property-read HigherOrderProxy $reject
+ * @property-read HigherOrderProxy $sum
+ *
+ */
 class Enumerable implements \Iterator, \JsonSerializable {
 
     use EventEmitter;
@@ -17,7 +34,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
     protected static $higherOrderMethods = [
         'average', 'avg', 'each', 'every', 'filter',
         'first', 'flatMap', 'keyBy', 'map', 'max', 'min',
-        'reject', 'sum'
+        'median', 'reject', 'sum'
     ];
 
 
@@ -31,7 +48,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
         } else {
             $inner = [];
         }
-        $this->generator = GeneratorHelpers::chain($inner)->value();
+        $this->generator = GeneratorHelpers::asGenerator($inner);
         if (is_array($initial) || $initial instanceof \Countable) {
             $this->size = count($initial);
         }
@@ -58,7 +75,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
         $this->emit('caching');
         $this->inner = iterator_to_array($this->generator);
         $this->size = count($this->inner);
-        $this->generator = GeneratorHelpers::chain($this->inner)->value();
+        $this->generator = GeneratorHelpers::asGenerator($this->inner);
         $this->emit('cached');
         return $this->inner;
     }
@@ -66,7 +83,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
     /**
      * Note: Caches result in memory but reopens the generator
      *
-     * @return array|\Generator
+     * @return array
      */
     public function toArray() {
         $this->emit('caching');
@@ -118,7 +135,6 @@ class Enumerable implements \Iterator, \JsonSerializable {
 
     /**
      * Skip the first $number elements and yields the rest. Fluent.
-     * @param $number Number of elements to skip
      * @return Enumerable
      */
     public function collapse() {
@@ -141,20 +157,20 @@ class Enumerable implements \Iterator, \JsonSerializable {
 
     /**
      * Alias of @see self::merge
-     * @param $values Values to concatenate
+     * @param array|\Iterator $values Values to concatenate
      * @return Enumerable
      */
     public function concat($values) {
         return $this->merge($values);
     }
 
-    public function merge($values) {
-        $this->generator = GeneratorHelpers::merge($this->generator, $values);
+    public function merge($values, $assoc = false) {
+        $this->generator = GeneratorHelpers::merge($this->generator, $values, $assoc);
         return $this;
     }
 
     public function put($key, $value) {
-        return $this->merge([$key => $value]);
+        return $this->merge([$key => $value], true);
     }
 
     public function push($value) {
@@ -193,7 +209,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
 
     public function eachSpread(callable $callback) {
         foreach ($this->generator as $value) {
-            if (call_user_func_array($callback, (new self($value))->all()) === false) {
+            if (call_user_func_array($callback, self::wrap($value)->values()->all()) === false) {
                 break;
             }
         }
@@ -266,9 +282,8 @@ class Enumerable implements \Iterator, \JsonSerializable {
         if (!$this->generator->valid() || $this->generator->key() === null) {
             return null;
         }
-        $value = $this->generator->next();
+        $value = $this->generator->current();
         $key = $this->generator->key();
-        $this->generator = GeneratorHelpers::prepend($this->generator, [ $key=>$value]);
         return [ $value, $key ];
     }
 
@@ -324,14 +339,14 @@ class Enumerable implements \Iterator, \JsonSerializable {
     public function get($key) {
         list( $value ) = $this->first(function ($v, $k) use ($key) {
             return $key === $k;
-        }, null, null, true);
+        }, null, null);
         return $value;
     }
 
     public function has($key) {
         list( $value ) = $this->first(function ($v, $k) use ($key) {
             return $key === $k;
-        }, null, null, true);
+        }, null, null);
         return $value !== null;
     }
 
@@ -378,7 +393,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
 
 
     public function last($callback = null, $operator = null, $valueSelector = null) {
-       return $this->nthElement(PHP_INT_MAX, $callback, $operator, $valueSelector);
+       return $this->where($callback, $operator, $valueSelector)->nthElement(PHP_INT_MAX);
     }
 
     public function mapInto($class, $transformToCtorArgs = null) {
@@ -390,7 +405,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
 
 
     public function mapSpread(callable $callback) {
-        return $this->map(function ($value, $key) use ($callback) {
+        return $this->map(function ($value) use ($callback) {
             return $callback(...$value);
         });
     }
@@ -416,12 +431,11 @@ class Enumerable implements \Iterator, \JsonSerializable {
      *
      * @param callable|null $mappingFunction Transform each element before summing.
      *        The mapping function should accept a $value and $key and return a numeric value
-     * @param bool $keepOpen Whether the internal generator should be cached and reopened
      * @return float The sum
      */
     public function sum(callable $mappingFunction = null) {
         $mapWith = SelectorHelpers::selector($mappingFunction);
-        return $this->map($mapWith)->reduce(function ($sum, $value, $key) {
+        return $this->map($mapWith)->reduce(function ($sum, $value) {
             return $sum+$value;
         }, 0);
     }
@@ -433,7 +447,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
      * @return float The average
      */
     public function average(callable $callable = null) : float {
-        return  $this->sum($callable) / $this->count();
+        return  $this->sum($callable) / $this->size;
     }
 
     /**
@@ -462,7 +476,6 @@ class Enumerable implements \Iterator, \JsonSerializable {
      * Find the median in O(nlogn) time using a min-heap
      *
      * @param mixed $callback
-     * @param bool $keepOpen
      * @return float|int
      */
     public function median($callback = null) {
@@ -475,7 +488,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
         }
         //Get half the elements out
         $count = $minHeap->count();
-        $target = $count%2 == 0?$count/2-1:$count/2;
+        $target = $count/2;
         for ($i = 0;$i < $target;$i++) {
             $current = $minHeap->extract();
         }
@@ -506,7 +519,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
     }
 
     public function nth($n) {
-        $this->generator = GeneratorHelpers::nth($n);
+        $this->generator = GeneratorHelpers::nth($this->generator, $n);
         return $this;
     }
 
@@ -534,7 +547,8 @@ class Enumerable implements \Iterator, \JsonSerializable {
     }
 
     public function shift() {
-        $first = $this->next();
+        $first = $this->current();
+        $this->next();
         return $first;
     }
 
@@ -587,6 +601,12 @@ class Enumerable implements \Iterator, \JsonSerializable {
         return $this;
     }
 
+    /**
+     * @param $other
+     * @param bool $ignoreMismatches
+     * @return $this
+     * @throws Exceptions\MismatchException
+     */
     public function zip($other, $ignoreMismatches = false) {
         $this->generator = GeneratorHelpers::zip($this->generator, $other, $ignoreMismatches);
         return $this;
@@ -659,5 +679,6 @@ class Enumerable implements \Iterator, \JsonSerializable {
         if (in_array($name, self::$higherOrderMethods)) {
             return new HigherOrderProxy($this, $name);
         }
+        throw new \BadMethodCallException("Tried to access property $name");
     }
 }

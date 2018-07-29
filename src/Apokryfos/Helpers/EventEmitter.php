@@ -19,7 +19,7 @@ trait EventEmitter {
     public function emit($eventName, ...$parameters) {
         $event = new Event($eventName, $this, ...$parameters);
 
-        foreach ($this->listeners[$event] ?? [] as $listener) {
+        foreach ($this->listeners[$eventName] ?? [] as $listener) {
             $listener($event);
         }
         return $event;

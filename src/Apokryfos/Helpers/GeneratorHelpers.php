@@ -14,7 +14,7 @@ class GeneratorHelpers {
     const DIFF_ONLY_KEY = 0b10;
     const DIFF_BOTH = 0b11;
 
-    public static function chain($generator) : GeneratorChain {
+    public static function chain($generator): GeneratorChain {
         return new GeneratorChain($generator);
     }
 
@@ -73,11 +73,14 @@ class GeneratorHelpers {
      * @return \Generator
      */
     public static function flatten(\Generator $generator, $maintainKeys = false, int $levels = null) {
-        $levels = $levels ? : PHP_INT_MAX;
+        $levels = $levels ?: PHP_INT_MAX;
         $index = 0;
         foreach ($generator as $key => $value) {
             if (($value instanceof \Traversable || is_array($value)) && $levels >= 0) {
-                foreach (self::flatten(self::chain($value), $maintainKeys, $levels - 1) as $innerKey => $innerValue) {
+                foreach (
+                    self::flatten(self::asGenerator($value), $maintainKeys, $levels - 1) as $innerKey =>
+                    $innerValue
+                ) {
                     yield ($maintainKeys ? $innerKey : $index++) => $innerValue;
                 }
             } else {
@@ -86,10 +89,18 @@ class GeneratorHelpers {
         }
     }
 
+    /**
+     * @param \Generator $generator
+     * @param $values
+     * @param bool $strict
+     * @return \Generator
+     * @throws CombineSizeMismatchException
+     * @throws NotAnIteratorException
+     */
     public static function combine(\Generator $generator, $values, $strict = false) {
         $valuesIterator = is_array($values) ? new \ArrayIterator($values) : $values;
         if (!($valuesIterator instanceof \Iterator)) {
-            throw new NotAnIteratorException("Expected an iterator but got a ".gettype($values));
+            throw new NotAnIteratorException("Expected an iterator but got a " . gettype($values));
         }
         $valuesIterator->rewind();
         foreach ($generator as $key) {
@@ -108,12 +119,20 @@ class GeneratorHelpers {
         }
     }
 
-    public static function merge(\Generator $generator, $values) {
-        foreach ($generator as $value) {
-            yield $value;
+    public static function merge(\Generator $generator, $values, $assoc = false) {
+        foreach ($generator as $key => $value) {
+            if ($assoc) {
+                yield $key => $value;
+            } else {
+                yield $value;
+            }
         }
-        foreach ($values as $value) {
-            yield $value;
+        foreach ($values as $key => $value) {
+            if ($assoc) {
+                yield $key => $value;
+            } else {
+                yield $value;
+            }
         }
     }
 
@@ -165,10 +184,15 @@ class GeneratorHelpers {
         return self::asGenerator(self::setOperation($generator, "intersect", $keyHandling, ...$values));
     }
 
+    /**
+     * @param \Generator $generator
+     * @param null $function
+     * @return \Generator
+     */
     public static function filter(\Generator $generator, $function = null) {
         $callback = SelectorHelpers::selector($function);
         foreach ($generator as $key => $value) {
-            if ($callback($value,$key)) {
+            if ($callback($value, $key)) {
                 yield $key => $value;
             }
         }
@@ -232,19 +256,20 @@ class GeneratorHelpers {
     }
 
     public static function splice(\Generator $generator, $offset, $length, $replacement = null) {
-        for ($atIndex = 0;$atIndex < $offset;$atIndex++) {
-            yield $generator->next();
+        for ($atIndex = 0; $atIndex < $offset; $atIndex++) {
+            yield $generator->current();
+            $generator->next();
         }
         yield from $replacement ?? [];
 
-        for ($skipped = 0; $skipped < $length;$skipped++) {
+        for ($skipped = 0; $skipped < $length; $skipped++) {
             $generator->next();
         }
         yield from $generator;
     }
 
     public static function slice(\Generator $generator, $offset, $length) {
-        for ($atIndex = 0;$atIndex < $offset;$atIndex++) {
+        for ($atIndex = 0; $atIndex < $offset; $atIndex++) {
             $generator->next();
         }
         yield from self::take($generator, $length);
@@ -253,7 +278,7 @@ class GeneratorHelpers {
     public static function nth(\Generator $generator, $n) {
         $i = 0;
         foreach ($generator as $key => $value) {
-            if ($i > 0 && $i%$n == 0) {
+            if ($i > 0 && $i % $n == 0) {
                 yield $key => $value;
             }
             $i++;
@@ -273,7 +298,7 @@ class GeneratorHelpers {
     }
 
     public static function timesGenerator($n, $callback) {
-        for ($i = 0; $i < $n;$i++) {
+        for ($i = 0; $i < $n; $i++) {
             yield $callback($i);
         }
     }
@@ -288,9 +313,16 @@ class GeneratorHelpers {
         yield from $array;
     }
 
+    /**
+     * @param \Generator $generator
+     * @param $array
+     * @param bool $ignoreMismatches
+     * @return \Generator
+     * @throws MismatchException
+     */
     public static function zip(\Generator $generator, $array, $ignoreMismatches = false) {
         foreach ($generator as $key => $item) {
-            if (!array_key_exists($key,$array) && !$ignoreMismatches) {
+            if (!array_key_exists($key, $array) && !$ignoreMismatches) {
                 throw new MismatchException("Given array does not match all keys in the generator");
             } else {
                 yield $item => $array[$key];
