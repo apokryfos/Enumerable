@@ -9,31 +9,46 @@ class SelectorHelpers {
        "==" => 1, "===" => 1, ">=" => 1, "<=" => 1, ">" => 1, "<" => 1, "!=" => 1, "!==" => 1
     ];
 
-    public static function whereSelector($key = null, $operator = null, $value = null) {
-        $keySelector = self::selector($key);
-        if (func_num_args() <= 1) {
-            return $keySelector;
+    public static function normalizeWhereArguments($key = null, $operator = null, $value = null) {
+        if (func_num_args() === 0) {
+            $key = self::identity();
+        } else {
+            $key = self::selector($key);
+        }
+        if (func_num_args() === 2) {
+            $value = $operator;
+            $operator = "==";
+        }
+        if (!array_key_exists($operator, self::$pemittedOperators)) {
+            $operator == "==";
+        }
+        return [ $key, $operator, $value ];
+    }
+
+    public static function whereSelector($keySelector, $operator, $compareValue, $strict = false) {
+        $strictRemap = [
+            null => "===",
+            "==" => "===",
+            "!=" => "!=="
+        ];
+
+        if ($strict) {
+            $operator = $strictRemap[$operator] ?? $operator;
         }
 
-        if (func_num_args() == 2) {
-            $operator = "==";
-            $otherSelector = self::selector($operator);
-        } else {
-            $otherSelector = self::selector($value);
-        }
         $operator = $operator && array_key_exists($operator, self::$pemittedOperators) ? $operator : "==";
-        return function ($value, $key) use ($keySelector, $otherSelector, $operator) {
+        return function ($value, $key) use ($keySelector, $operator, $compareValue) {
             $selectedLHS = $keySelector($value,  $key);
-            $selectedRHS = $otherSelector($value, $key);
-            if ($operator == "==") { return $selectedLHS == $selectedRHS; }
-            if ($operator == "===") { return $selectedLHS === $selectedRHS; }
-            if ($operator == "!=") { return $selectedLHS != $selectedRHS; }
-            if ($operator == "!==") { return $selectedLHS !== $selectedRHS; }
-            if ($operator == "<") { return $selectedLHS < $selectedRHS; }
-            if ($operator == ">") { return $selectedLHS > $selectedRHS; }
-            if ($operator == "<=") { return $selectedLHS <= $selectedRHS; }
-            if ($operator == ">=") { return $selectedLHS >= $selectedRHS; }
-            return $selectedLHS == $selectedRHS;
+
+            if ($operator == "==") { return $selectedLHS == $compareValue; }
+            if ($operator == "===") { return $selectedLHS === $compareValue; }
+            if ($operator == "!=") { return $selectedLHS != $compareValue; }
+            if ($operator == "!==") { return $selectedLHS !== $compareValue; }
+            if ($operator == "<") { return $selectedLHS < $compareValue; }
+            if ($operator == ">") { return $selectedLHS > $compareValue; }
+            if ($operator == "<=") { return $selectedLHS <= $compareValue; }
+            if ($operator == ">=") { return $selectedLHS >= $compareValue; }
+            return $selectedLHS == $compareValue;
         };
     }
 
@@ -82,32 +97,12 @@ class SelectorHelpers {
         };
     }
 
-    public static function setHelper($keyHandling = GeneratorHelpers::DIFF_ONLY_VALUE, $setOperation = "diff") {
-        switch ($setOperation) {
-            case "diff":
-                return function ($value, $key, $value2, $key2) use ($keyHandling) {
-                    if (($keyHandling==GeneratorHelpers::DIFF_BOTH && $key === $key2 && $value === $value2)
-                        || ($value === $value2 && $keyHandling == GeneratorHelpers::DIFF_ONLY_VALUE)
-                        || ($key === $key2 && $keyHandling == GeneratorHelpers::DIFF_ONLY_KEY)) {
-                        return false;
-                    }
-                    return true;
-                };
-            case "intersect":
-                return function ($value, $key, $value2, $key2) use ($keyHandling) {
-                    if (($keyHandling==GeneratorHelpers::DIFF_BOTH && $key !== $key2 && $value !== $value2)
-                        || ($value !== $value2 && $keyHandling == GeneratorHelpers::DIFF_ONLY_VALUE)
-                        || ($key !== $key2 && $keyHandling == GeneratorHelpers::DIFF_ONLY_KEY)) {
-                        return false;
-                    }
-                    return true;
-                };
-            default:
-                return function () use ($keyHandling) {
-                    return true;
-                };
-        }
+    public static function instanceOfSelector($class) {
+        return function($value) use ($class) {
+            return $value instanceof $class;
+        };
     }
+
 
 
 }

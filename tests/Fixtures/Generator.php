@@ -33,6 +33,9 @@ class Generator {
         return self::randomArray($size, self::$defaultValuesPool, 1, 10, true);
     }
 
+    public static function randomSmallNumbersArray($size=10, $nullProbablilty = 0) {
+        return array_map('intval', self::randomArray($size, "0123456789", 1, 3, false, $nullProbablilty));
+    }
 
     public static function randomNumbersArray($size=10, $nullProbablilty = 0) {
         return array_map('intval', self::randomArray($size, "0123456789", 1, 10, false, $nullProbablilty));

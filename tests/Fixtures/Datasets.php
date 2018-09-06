@@ -125,6 +125,20 @@ class Datasets {
         ];
     }
 
+    public function mixedTestCase() {
+        return $this->randomDatasetOf(function () {
+            return array_map(
+                function () {
+                    if (rand(1, 10) < 5) {
+                        return new TestHelper();
+                    } else {
+                        return [ "identifier" => rand(), "label" => Generator::randomValue() ];
+                    }
+                },
+                range(1, self::$datasetSize)
+            );
+        });
+    }
 
     public function higherOrderTestCase() {
         return $this->randomDatasetOf(function () {
@@ -139,6 +153,10 @@ class Datasets {
 
     public function randomNumbersDataset() {
         return $this->randomDatasetOf([ Generator::class, 'randomNumbersArray' ], self::$datasetSize);
+    }
+
+    public function randomSmallNumbersDataset() {
+        return $this->randomDatasetOf([ Generator::class, 'randomSmallNumbersArray' ], self::$datasetSize);
     }
 
     public function randomNumbersDatasetWithNulls() {
@@ -160,6 +178,21 @@ class Datasets {
                 },
                 range(1, self::$datasetSize)
             );
+        });
+    }
+
+    public function whereStrictDataset() {
+        return $this->randomDatasetOf(function () {
+            $set = array_map(function () {
+                return [ "number" => rand(1,100) < 5 ? "1" : 1 ];
+            }, range(0, self::$datasetSize-1));
+
+            return [
+                $set,
+                array_filter($set, function ($v) {
+                    return $v["number"] !== "1";
+                })
+            ];
         });
     }
 

@@ -10,9 +10,9 @@ use Apokryfos\Exceptions\NotAnIteratorException;
 
 class GeneratorHelpers {
 
-    const DIFF_ONLY_VALUE = 0b01;
-    const DIFF_ONLY_KEY = 0b10;
-    const DIFF_BOTH = 0b11;
+    const ONLY_VALUE = 0b01;
+    const ONLY_KEY = 0b10;
+    const BOTH = 0b11;
 
     public static function chain($generator): GeneratorChain {
         return new GeneratorChain($generator);
@@ -156,8 +156,15 @@ class GeneratorHelpers {
         }
     }
 
-    public static function setOperation(\Generator $generator, $operation, $keyHandling = self::DIFF_ONLY_VALUE, ...$values) {
-        $shouldYield = SelectorHelpers::setHelper($keyHandling, $operation);
+    public static function diff(\Generator $generator, $keyHandling = self::ONLY_VALUE, ...$values) {
+        $shouldYield = function ($value, $key, $value2, $key2) use ($keyHandling) {
+            if (($keyHandling==GeneratorHelpers::BOTH && $key === $key2 && $value === $value2)
+                || ($value === $value2 && $keyHandling == GeneratorHelpers::ONLY_VALUE)
+                || ($key === $key2 && $keyHandling == GeneratorHelpers::ONLY_KEY)) {
+                return false;
+            }
+            return true;
+        };
         foreach ($generator as $key => $value) {
             $yield = true;
             foreach ($values as $innerValue) {
@@ -176,12 +183,32 @@ class GeneratorHelpers {
         }
     }
 
-    public static function diff(\Generator $generator, $keyHandling = self::DIFF_ONLY_VALUE, ...$values) {
-        return self::asGenerator(self::setOperation($generator, "diff", $keyHandling, ...$values));
-    }
 
-    public static function intersect(\Generator $generator, $keyHandling = self::DIFF_ONLY_VALUE, ...$values) {
-        return self::asGenerator(self::setOperation($generator, "intersect", $keyHandling, ...$values));
+    public static function intersect(\Generator $generator, $keyHandling = self::ONLY_VALUE, ...$values) {
+        $matches = function ($value, $key, $value2, $key2) use ($keyHandling) {
+            if (($keyHandling==GeneratorHelpers::BOTH && $key === $key2 && $value === $value2)
+                || ($value === $value2 && $keyHandling == GeneratorHelpers::ONLY_VALUE)
+                || ($key === $key2 && $keyHandling == GeneratorHelpers::ONLY_KEY)) {
+                return true;
+            }
+            return false;
+        };
+        foreach ($generator as $key => $value) {
+            $matchCount = 0;
+            foreach ($values as $innerValue) {
+                foreach ($innerValue as $key2 => $value2) {
+                    $yield = $matches($value, $key, $value2, $key2);
+                    if ($yield) {
+                        $matchCount++;
+                        break;
+                    }
+                }
+
+            }
+            if ($matchCount == count($values)) {
+                yield $key => $value;
+            }
+        }
     }
 
     /**
@@ -246,8 +273,23 @@ class GeneratorHelpers {
     }
 
     public static function prepend(\Generator $generator, $values) {
-        yield from $values;
-        yield from $generator;
+        $assoc = true;
+        if (key($values) === 0) {
+            $assoc = false;
+        }
+        if ($assoc) {
+            yield from $values;
+            yield from $generator;
+        } else {
+            $i = 0;
+            foreach ($values as $key => $value) {
+                yield ($i++) => $value;
+            }
+            foreach ($generator as $key => $value) {
+                yield ($i++) => $value;
+            }
+        }
+
     }
 
     public static function append(\Generator $generator, $values) {
@@ -278,7 +320,7 @@ class GeneratorHelpers {
     public static function nth(\Generator $generator, $n) {
         $i = 0;
         foreach ($generator as $key => $value) {
-            if ($i > 0 && $i % $n == 0) {
+            if ($i % $n == 0) {
                 yield $key => $value;
             }
             $i++;

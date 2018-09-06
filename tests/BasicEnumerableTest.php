@@ -5,8 +5,10 @@ namespace Tests\Apokryfos;
 
 use Apokryfos\Enumerable;
 use Apokryfos\Exceptions\CombineSizeMismatchException;
+use Apokryfos\Helpers\SelectorHelpers;
 use PHPUnit\Framework\TestCase;
 use Tests\Fixtures\Generator;
+use Tests\Helpers\TestHelper;
 
 class BasicEnumerableTest extends TestCase {
 
@@ -147,7 +149,7 @@ class BasicEnumerableTest extends TestCase {
      */
     public function testConcat($a, $b) {
         $e = new Enumerable($a);
-        $this->assertEquals(array_merge($a,$b), $e->merge($b)->toArray());
+        $this->assertEquals(array_merge($a,$b), $e->concat($b)->toArray());
     }
 
 
@@ -248,7 +250,7 @@ class BasicEnumerableTest extends TestCase {
         $e = new Enumerable($dataset);
         $key = Generator::randomValue();
         $v = Generator::randomValue();
-        $expected = array_merge($dataset, [ $key => $v ]);
+        $expected = $dataset + [ $key => $v ];
         $this->assertEquals($expected, $e->put($key, $v)->all());
 
     }
@@ -294,5 +296,227 @@ class BasicEnumerableTest extends TestCase {
         $this->assertEquals($expected, Enumerable::wrap($numbers)->where("identifier", "<", $mean)->all());
     }
 
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset
+     * @param array $numbers
+     */
+    public function testWhereIn(...$numbers) {
+        $subset = array_column($numbers, "identifier");
+        shuffle($subset);
+        $subset = array_slice($subset, 0, count($subset)/4);
+        $expected = array_filter($numbers, function ($value) use ($subset) {
+            return in_array($value["identifier"], $subset);
+        });
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->whereIn("identifier", $subset)->all());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset
+     * @param array $numbers
+     */
+    public function testWhereInStrict(...$numbers) {
+        $subset = array_column($numbers, "identifier");
+        shuffle($subset);
+        $subset = array_slice($subset, 0, count($subset)/4);
+        $noisySubset = array_map(function ($v) {
+            if (rand(1,100) < 10) {
+                return strval($v);
+            }
+            return $v;
+        }, $subset);
+        $expected = array_filter($numbers, function ($value) use ($noisySubset) {
+            return in_array($value["identifier"], $noisySubset, true);
+        });
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->whereInStrict("identifier", $noisySubset)->all());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset
+     * @param array $numbers
+     */
+    public function testWhereNotInStrict(...$numbers) {
+        $subset = array_column($numbers, "identifier");
+        shuffle($subset);
+        $subset = array_slice($subset, 0, count($subset)/4);
+        $noisySubset = array_map(function ($v) {
+            if (rand(1,100) < 10) {
+                return strval($v);
+            }
+            return $v;
+        }, $subset);
+        $expected = array_filter($numbers, function ($value) use ($noisySubset) {
+            return !in_array($value["identifier"], $noisySubset, true);
+        });
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->whereNotInStrict("identifier", $noisySubset)->all());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset
+     * @param array $numbers
+     */
+    public function testWhereNotIn(...$numbers) {
+        $subset = array_column($numbers, "identifier");
+        shuffle($subset);
+        $subset = array_slice($subset, 0, count($subset)/4);
+        $expected = array_filter($numbers, function ($value) use ($subset) {
+            return !in_array($value["identifier"], $subset);
+        });
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->whereNotIn("identifier", $subset)->all());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::whereStrictDataset
+     * @param array $numbers
+     */
+    public function testWhereImplicitEquals($numbers) {
+        $this->assertEquals($numbers, Enumerable::wrap($numbers)->where("number", "1")->all());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::whereStrictDataset
+     * @param array $numbers
+     */
+    public function testWhereStrict($numbers, $expected) {
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->whereStrict("number", 1)->all());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset
+     * @param array $numbers
+     */
+    public function testExcept(...$numbers) {
+        $indices = range(0, count($numbers)-1);
+        shuffle($indices);
+        $except = array_slice($indices, 0, rand(1,20));
+        $expected = array_diff_key($numbers, array_flip($except));
+        $e = new Enumerable($numbers);
+        $this->assertEquals($expected, $e->except($except)->all());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset
+     * @param array $numbers
+     */
+    public function testOnly(...$numbers) {
+        $indices = range(0, count($numbers)-1);
+        shuffle($indices);
+        $only = array_slice($indices, 0, rand(1,20));
+        $expected = array_intersect_key($numbers, array_flip($only));
+        $e = new Enumerable($numbers);
+        $this->assertEquals($expected, $e->only($only)->all());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::mixedTestCase
+     * @param array $numbers
+     */
+    public function testWhereInstanceOf(...$classes) {
+        $expected = array_filter($classes, function ($c) {
+            return $c instanceof TestHelper;
+        });
+        $e = new Enumerable($classes);
+        $this->assertEquals($expected, $e->whereInstanceOf(TestHelper::class)->all());
+    }
+
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::higherOrderTestCase
+     * @param array $numbers
+     */
+    public function testEvery(...$classes) {
+        $e = new Enumerable($classes);
+        $this->assertEquals(true, $e->every(SelectorHelpers::instanceOfSelector(TestHelper::class)));
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset
+     * @param array $numbers
+     */
+    public function testPeek($first, ...$arrays) {
+        $e = new Enumerable(func_get_args());
+
+        $this->assertEquals([ $first, 0 ], $e->peek());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset
+     * @param array $numbers
+     */
+    public function testRepeek($first, ...$arrays) {
+        $e = new Enumerable(func_get_args());
+
+        $this->assertEquals([ $first, 0 ], $e->peek());
+        $this->assertEquals([ $first, 0 ], $e->peek());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomSmallNumbersDataset
+     * @param array $numbers
+     */
+    public function testCountValues(...$numbers) {
+        $expected = array_count_values($numbers);
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->countValues()->all());
+
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDataset
+     * @param array $numbers
+     */
+    public function testMode(...$numbers) {
+        $count = array_count_values($numbers);
+        arsort($count);
+        $expected = key($count);
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->mode());
+
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDataset
+     * @param array $numbers
+     */
+    public function testNth(...$numbers) {
+        $n = rand(1, 5);
+        $i = 0;
+        $expected = array_filter($numbers, function () use (&$i, $n) {
+            return ($i++)%$n === 0;
+        });
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->nth($n)->all());
+
+    }
+
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDataset
+     * @param array $numbers
+     */
+    public function testPad(...$numbers) {
+        $paddingSize = 100;
+        $paddingValue = 'padding';
+        $expected = array_pad($numbers, count($numbers) + $paddingSize, $paddingValue);
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->pad(count($numbers) + $paddingSize, $paddingValue)->all());
+
+    }
+
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset
+     * @param array $numbers
+     */
+    public function testPluck(...$numbers) {
+        $expected = array_column($numbers, 'label');
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->pluck('label')->all());
+
+    }
+
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset
+     * @param array $numbers
+     */
+    public function testPrepend(...$numbers) {
+        $expected = array_merge($r = Generator::randomArray(10), $numbers);
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->prepend(...$r)->all());
+    }
 
 }

@@ -25,7 +25,6 @@ use Apokryfos\Helpers\SelectorHelpers;
  */
 class Enumerable implements \Iterator, \JsonSerializable {
 
-    use EventEmitter;
 
     protected $generator;
     protected $inner;
@@ -55,43 +54,20 @@ class Enumerable implements \Iterator, \JsonSerializable {
     }
 
 
-    public function stream($keepOpen = false) {
-        if ($keepOpen) {
-            $this->all();
-            yield from $this->inner;
-        } else {
-            $this->emit('closing');
-            yield from $this->generator;
-            $this->emit('closed');
-        }
+    public function stream() {
+        yield from $this->generator;
     }
 
-    /**
-     * Note: Caches result in memory but reopens the generator
-     *
-     * @return array
-     */
     public function all() {
-        $this->emit('caching');
-        $this->inner = iterator_to_array($this->generator);
-        $this->size = count($this->inner);
-        $this->generator = GeneratorHelpers::asGenerator($this->inner);
-        $this->emit('cached');
-        return $this->inner;
+        $array = iterator_to_array($this->generator);
+        $this->size = count($array);
+        return $array;
     }
 
-    /**
-     * Note: Caches result in memory but reopens the generator
-     *
-     * @return array
-     */
     public function toArray() {
-        $this->emit('caching');
-        $this->inner = GeneratorHelpers::generatorToArray($this->generator);
-        $this->size = count($this->inner);
-        $this->generator = GeneratorHelpers::asGenerator($this->inner);
-        $this->emit('cached');
-        return $this->inner;
+        $array = GeneratorHelpers::generatorToArray($this->generator);
+        $this->size = count($array);
+        return $array;
     }
 
     public function toJson() {
@@ -184,17 +160,17 @@ class Enumerable implements \Iterator, \JsonSerializable {
     }
 
     public function diff(...$values) {
-        $this->generator = GeneratorHelpers::diff($this->generator, GeneratorHelpers::DIFF_ONLY_VALUE,...$values);
+        $this->generator = GeneratorHelpers::diff($this->generator, GeneratorHelpers::ONLY_VALUE,...$values);
         return $this;
     }
 
     public function diffAssoc(...$values) {
-        $this->generator = GeneratorHelpers::diff($this->generator, GeneratorHelpers::DIFF_BOTH,...$values);
+        $this->generator = GeneratorHelpers::diff($this->generator, GeneratorHelpers::BOTH,...$values);
         return $this;
     }
 
     public function diffKeys(...$values) {
-        $this->generator = GeneratorHelpers::diff($this->generator, GeneratorHelpers::DIFF_ONLY_KEY,...$values);
+        $this->generator = GeneratorHelpers::diff($this->generator, GeneratorHelpers::ONLY_KEY,...$values);
         return $this;
     }
 
@@ -229,17 +205,12 @@ class Enumerable implements \Iterator, \JsonSerializable {
     }
 
     public function where($keySelector, $operator = null, $valueSelector = null) {
-        $callback = SelectorHelpers::whereSelector($keySelector, $operator, $valueSelector);
-        return $this->filter($callback);
+        $args = SelectorHelpers::normalizeWhereArguments(...func_get_args());
+        return $this->filter(SelectorHelpers::whereSelector(...$args));
     }
     public function whereStrict($keySelector, $operator = null, $valueSelector = null) {
-        $remap = [
-            null => "===",
-            "==" => "===",
-            "!=" => "!=="
-        ];
-        $operator = $remap[$operator] ?? $operator;
-        return $this->where($keySelector, $operator, $valueSelector);
+        $args = SelectorHelpers::normalizeWhereArguments(...func_get_args());
+        return $this->filter(SelectorHelpers::whereSelector(...array_merge($args, [ true ])));
     }
 
     public function whereIn($keySelector, $array, $strict = false, $negate = false) {
@@ -263,9 +234,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
     }
 
     public function whereInstanceOf($class) {
-        return $this->filter(function ($value) use ($class) {
-           return $value instanceof $class;
-        });
+        return $this->filter(SelectorHelpers::instanceOfSelector($class));
     }
 
     public function every($callback = null) {
@@ -291,7 +260,6 @@ class Enumerable implements \Iterator, \JsonSerializable {
     public function nthElement(int $n) {
         $nth = null;
         $seen = 0;
-        $this->emit('closing');
         foreach ($this->generator as $key => $value) {
             $nth = [$value, $key];
             $seen++;
@@ -300,7 +268,6 @@ class Enumerable implements \Iterator, \JsonSerializable {
             }
 
         }
-        $this->emit('closed');
         return $nth;
     }
 
@@ -359,12 +326,12 @@ class Enumerable implements \Iterator, \JsonSerializable {
     }
 
     public function intersect(...$values) {
-        $this->generator = GeneratorHelpers::intersect($this->generator, GeneratorHelpers::DIFF_ONLY_VALUE, ...$values);
+        $this->generator = GeneratorHelpers::intersect($this->generator, GeneratorHelpers::ONLY_VALUE, ...$values);
         return $this;
     }
 
     public function intersectByKeys(...$values) {
-        $this->generator = GeneratorHelpers::intersect($this->generator, GeneratorHelpers::DIFF_ONLY_KEY, ...$values);
+        $this->generator = GeneratorHelpers::intersect($this->generator, GeneratorHelpers::ONLY_KEY, ...$values);
         return $this;
     }
 
@@ -499,21 +466,20 @@ class Enumerable implements \Iterator, \JsonSerializable {
     }
 
 
-    public function countValues($callback = null) {
-        $callback = SelectorHelpers::selector($callback);
+    public function countValues() {
         $counts = [];
         $total = 0;
-        foreach ($this->map($callback)->stream() as $key => $item) {
+        foreach ($this->stream() as $key => $item) {
             $counts[$item] = ($counts[$item] ?? 0) + 1;
             $total++;
         }
-        return $counts;
+        return self::wrap($counts);
 
     }
 
 
-    public function mode($callback = null) {
-        $countValues = $this->countValues($callback);
+    public function mode() {
+        $countValues = $this->countValues()->all();
         arsort($countValues);
         return key($countValues);
     }
