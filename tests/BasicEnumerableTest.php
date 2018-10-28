@@ -7,8 +7,11 @@ use Apokryfos\Enumerable;
 use Apokryfos\Exceptions\CombineSizeMismatchException;
 use Apokryfos\Helpers\SelectorHelpers;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\VarDumper\Cloner\Data;
+use Tests\Fixtures\Datasets;
 use Tests\Fixtures\Generator;
 use Tests\Helpers\TestHelper;
+use Tests\Helpers\TestObject;
 
 class BasicEnumerableTest extends TestCase {
 
@@ -517,6 +520,233 @@ class BasicEnumerableTest extends TestCase {
     public function testPrepend(...$numbers) {
         $expected = array_merge($r = Generator::randomArray(10), $numbers);
         $this->assertEquals($expected, Enumerable::wrap($numbers)->prepend(...$r)->all());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDatasetWithNulls
+     * @param array $numbers
+     */
+    public function testReject(...$numbers) {
+        $rejectFunc = function ($value) {
+            return $value === null;
+        };
+
+        $expected = array_filter($numbers, function ($value) use ($rejectFunc) {
+            return !$rejectFunc($value);
+        });
+
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->reject($rejectFunc)->all());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDatasetWithNulls
+     * @param array $numbers
+     */
+    public function testShift(...$numbers) {
+        $clone = $numbers;
+
+        $expected = array_shift($clone);
+        $enumerable = Enumerable::wrap($numbers);
+        $this->assertEquals($expected, $enumerable->shift());
+        $this->assertEquals($clone, $enumerable->all());
+
+    }
+
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDatasetWithNulls
+     * @param array $numbers
+     */
+    public function testNthElement(...$numbers) {
+        $n = rand(1, count($numbers));
+
+        $expected = $numbers[$n-1];
+        $enumerable = Enumerable::wrap($numbers);
+        list( $actual, $index ) = $enumerable->nthElement($n);
+        $this->assertEquals($expected, $actual);
+        $this->assertEquals($n-1, $index);
+
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDatasetWithNullLabels
+     * @param array $dataset
+     */
+    public function testFirstWhere(...$dataset) {
+        $target = array_filter($dataset, function ($data) {
+            return $data["label"] === null;
+        });
+        if (!empty($target)) {
+            $target = current($target);
+        } else {
+            $target = null;
+        }
+
+        $this->assertEquals($target, Enumerable::wrap($dataset)->firstWhere("label","==",null));
+
+    }
+
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomAssociativeStringDataset()
+     * @param $dataset
+     */
+    public function testFlip($dataset) {
+        $expected = array_flip($dataset);
+        $this->assertEquals($expected, Enumerable::wrap($dataset)->flip()->all());
+
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomAssociativeStringDataset()
+     */
+    public function testFlatMap() {
+        $dataset = array_map(function () {
+            return Generator::randomNumbersArray(5);
+        }, range(0, 4));
+
+        $mapper = function ($value) {
+            return sqrt($value);
+        };
+
+        $expected = [];
+        foreach ($dataset as $values) {
+            foreach ($values as $value) {
+                $expected[] = $mapper($value);
+            }
+        }
+        $this->assertEquals($expected, Enumerable::wrap($dataset)->flatMap(function ($values) use ($mapper) {
+            return Enumerable::wrap($values)->map($mapper);
+        })->all());
+
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomAssociativeStringDataset()
+     * @param $dataset
+     */
+    public function testForget($dataset) {
+        $randomkey = array_keys($dataset)[rand(0, count($dataset)-1)];
+        $expected = array_filter($dataset, function ($key) use ($randomkey) {
+            return $key !== $randomkey;
+        }, ARRAY_FILTER_USE_KEY);
+
+        $this->assertEquals($expected, Enumerable::wrap($dataset)->forget($randomkey)->all());
+
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomAssociativeStringDataset()
+     * @param array $dataset
+     */
+    public function testGet($dataset) {
+        $randomkey = array_keys($dataset)[rand(0, count($dataset)-1)];
+        $expected = array_filter($dataset, function ($key) use ($randomkey) {
+            return $key !== $randomkey;
+        }, ARRAY_FILTER_USE_KEY);
+
+        $this->assertEquals(current($expected), Enumerable::wrap($dataset)->get($randomkey));
+
+    }
+
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomAssociativeStringDatasetWithNulls()
+     * @param array $dataset
+     */
+    public function testExistsAndIsNull($dataset) {
+        $nullValues = array_filter($dataset, function ($value) {
+            return $value === null;
+        });
+        $randomkey = array_keys($nullValues)[rand(0, count($nullValues)-1)];
+        $this->assertTrue(Enumerable::wrap($dataset)->has($randomkey));
+        $this->assertFalse(Enumerable::wrap($dataset)->has($randomkey, false));
+
+    }
+
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomAssociativeStringDatasetWithNulls()
+     * @param array $dataset
+     */
+    public function testImplode($dataset) {
+        $string = implode('.', $dataset);
+        $this->assertEquals($string, Enumerable::wrap($dataset)->implode('.'));
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomAssociativeStringDatasetWithNulls()
+     * @param array $dataset
+     */
+    public function testIntersect($dataset) {
+        $expected = array_filter($dataset, function ($v) {
+            return $v === null;
+        });
+        $this->assertEquals($expected, Enumerable::wrap($dataset)->intersect([ null ])->all());
+    }
+
+    public function testIsEmpty() {
+        $enumerable1 = Enumerable::make();
+        $enumerable2 = Enumerable::wrap([ rand(1,10) ]);
+
+        $this->assertTrue($enumerable1->isEmpty());
+        $this->assertFalse($enumerable1->isNotEmpty());
+        $this->assertFalse($enumerable2->isEmpty());
+        $this->assertTrue($enumerable2->isNotEmpty());
+    }
+
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset
+     * @param array $numbers
+     */
+    public function testKeyBy(...$numbers) {
+        $expected = [];
+        foreach ($numbers as $number) {
+            $expected[$number["identifier"]] = $number;
+        }
+
+        $this->assertEquals($expected, Enumerable::wrap($numbers)->keyBy("identifier")->all());
+    }
+
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomAssociativeStringDatasetWithNulls()
+     * @param array $dataset
+     */
+    public function testKeys($dataset) {
+        $expected = array_keys($dataset);
+        $this->assertEquals($expected, Enumerable::wrap($dataset)->keys()->all());
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDatasetWithNullLabels()
+     * @param array $dataset
+     */
+    public function testLast(...$dataset) {
+        $expected = array_filter($dataset, function ($data) {
+            return $data["label"] === null;
+        });
+        $lastIndex =array_keys($expected)[count($expected)-1];
+        $last = $expected[$lastIndex];
+        $this->assertEquals([ $last, $lastIndex ], Enumerable::wrap($dataset)->last("label" ,"==", null));
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset()
+     * @param array $dataset
+     */
+    public function testMapInto(...$dataset) {
+        $result = Enumerable::wrap($dataset)->mapInto(TestObject::class, function ($data) {
+            return array_values($data);
+        });
+        foreach ($result as $index => $object) {
+            $this->assertInstanceOf(TestObject::class, $object);
+            $this->assertEquals($dataset[$index], [
+                "identifier" => $object->getIdentifier(),
+                "label" => $object->getLabel()
+            ]);
+        }
     }
 
 }

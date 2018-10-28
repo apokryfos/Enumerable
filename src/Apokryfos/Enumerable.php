@@ -28,7 +28,6 @@ class Enumerable implements \Iterator, \JsonSerializable {
 
     protected $generator;
     protected $inner;
-    protected $size = null;
 
     protected static $higherOrderMethods = [
         'average', 'avg', 'each', 'every', 'filter',
@@ -48,9 +47,6 @@ class Enumerable implements \Iterator, \JsonSerializable {
             $inner = [];
         }
         $this->generator = GeneratorHelpers::asGenerator($inner);
-        if (is_array($initial) || $initial instanceof \Countable) {
-            $this->size = count($initial);
-        }
     }
 
 
@@ -60,13 +56,11 @@ class Enumerable implements \Iterator, \JsonSerializable {
 
     public function all() {
         $array = iterator_to_array($this->generator);
-        $this->size = count($array);
         return $array;
     }
 
     public function toArray() {
         $array = GeneratorHelpers::generatorToArray($this->generator);
-        $this->size = count($array);
         return $array;
     }
 
@@ -266,13 +260,13 @@ class Enumerable implements \Iterator, \JsonSerializable {
             if ($seen === $n) {
                 break;
             }
-
         }
         return $nth;
     }
 
     public function first($callback = null, $operator = null, $valueSelector = null) {
-        return $this->where($callback, $operator, $valueSelector)->nthElement(1);
+        list($element) = $this->where($callback, $operator, $valueSelector)->nthElement(1);
+        return $element;
     }
 
     public function firstWhere($callback = null, $operator = null, $valueSelector = null) {
@@ -304,25 +298,24 @@ class Enumerable implements \Iterator, \JsonSerializable {
     }
 
     public function get($key) {
-        list( $value ) = $this->first(function ($v, $k) use ($key) {
+        return $this->first(function ($v, $k) use ($key) {
             return $key === $k;
         }, null, null);
-        return $value;
     }
 
-    public function has($key) {
-        list( $value ) = $this->first(function ($v, $k) use ($key) {
-            return $key === $k;
-        }, null, null);
-        return $value !== null;
+    public function has($key, $allowNullValue = true) {
+        foreach ($this->stream() as $k => $value) {
+            if ($key === $k && ($allowNullValue || $value !== null)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public function implode(string $character) {
-        $str = null;
-        foreach ($this->stream() as $value) {
-            $str = $str !== null ? $character.strval($value) : strval($value);
-        }
-        return $str;
+        return $this->reduce(function ($current, $value) use ($character) {
+            return $current === null ? strval($value) : $current.$character.strval($value);
+        }, null);
     }
 
     public function intersect(...$values) {
@@ -336,7 +329,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
     }
 
     public function isEmpty() {
-        return $this->peek() !== null;
+        return $this->peek() === null;
     }
 
     public function isNotEmpty() {
@@ -366,7 +359,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
     public function mapInto($class, $transformToCtorArgs = null) {
         $callback = SelectorHelpers::selector($transformToCtorArgs);
         return $this->map($callback)->map(function ($value) use ($class) {
-            return new $class($value);
+            return new $class(...$value);
         });
     }
 
@@ -389,7 +382,6 @@ class Enumerable implements \Iterator, \JsonSerializable {
             $next = $callback($next, $value, $key);
             $count ++;
         }
-        $this->size = $count;
         return $next;
     }
 
@@ -413,8 +405,14 @@ class Enumerable implements \Iterator, \JsonSerializable {
      * @param callable|null $callable
      * @return float The average
      */
-    public function average(callable $callable = null) : float {
-        return  $this->sum($callable) / $this->size;
+    public function average($callable = null) : float {
+        $selector = SelectorHelpers::selector($callable);
+        $sum = $this->map($selector)->reduce(function ($current, $value) {
+            $current[0]++;
+            $current[1] += $value;
+            return $current;
+        }, [ 0, 0 ]);
+        return $sum[1]/$sum[0];
     }
 
     /**
@@ -505,8 +503,8 @@ class Enumerable implements \Iterator, \JsonSerializable {
         return $this;
     }
 
-    public function reject($rejector, $operator = null, $where = null) {
-        $callback = SelectorHelpers::whereSelector($rejector, $operator, $where);
+    public function reject($rejector) {
+        $callback = SelectorHelpers::selector($rejector);
         return $this->filter(function ($value, $key) use ($callback) {
             return !$callback($value, $key);
         });
@@ -514,7 +512,11 @@ class Enumerable implements \Iterator, \JsonSerializable {
 
     public function shift() {
         $first = $this->current();
+        $key = $this->key();
         $this->next();
+        if ($key === 0) {
+            $this->generator = GeneratorHelpers::asNonAssociativeArray($this->generator);
+        }
         return $first;
     }
 

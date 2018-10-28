@@ -155,6 +155,14 @@ class Datasets {
         return $this->randomDatasetOf([ Generator::class, 'randomNumbersArray' ], self::$datasetSize);
     }
 
+    public function randomAssociativeStringDataset() {
+        return $this->randomDatasetOf([ Generator::class, 'randomKeyedArray' ], self::$datasetSize);
+    }
+
+    public function randomAssociativeStringDatasetWithNulls() {
+        return $this->randomDatasetOf([ Generator::class, 'randomKeyedArray' ], self::$datasetSize, 0.1);
+    }
+
     public function randomSmallNumbersDataset() {
         return $this->randomDatasetOf([ Generator::class, 'randomSmallNumbersArray' ], self::$datasetSize);
     }

@@ -22,6 +22,12 @@ class GeneratorHelpers {
         yield from $iterable;
     }
 
+    public static function asNonAssociativeArray(\Generator $iterable) {
+        $index = 0;
+        foreach ($iterable as $value) {
+            yield $index++ => $value;
+        }
+    }
 
     public static function skip(\Generator $generator, $size) {
         $count = 0;

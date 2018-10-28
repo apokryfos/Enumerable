@@ -29,8 +29,8 @@ class Generator {
         return $result;
     }
 
-    public static function randomKeyedArray($size = 10) {
-        return self::randomArray($size, self::$defaultValuesPool, 1, 10, true);
+    public static function randomKeyedArray($size = 10, $nullProbability = 0) {
+        return [ self::randomArray($size, self::$defaultValuesPool, 1, 10, true, $nullProbability) ];
     }
 
     public static function randomSmallNumbersArray($size=10, $nullProbablilty = 0) {
