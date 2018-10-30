@@ -253,7 +253,8 @@ class BasicEnumerableTest extends TestCase {
         $e = new Enumerable($dataset);
         $key = Generator::randomValue();
         $v = Generator::randomValue();
-        $expected = $dataset + [ $key => $v ];
+        $expected = $dataset;
+        $expected[$key] = $v;
         $this->assertEquals($expected, $e->put($key, $v)->all());
 
     }

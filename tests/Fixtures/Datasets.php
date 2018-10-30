@@ -7,7 +7,7 @@ use Tests\Helpers\TestHelper;
 
 class Datasets {
 
-    public static $testCaseCount = 15;
+    public static $testCaseCount = 25;
     public static $datasetSize = 100;
 
 
