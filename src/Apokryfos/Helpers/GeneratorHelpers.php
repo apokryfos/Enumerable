@@ -249,12 +249,28 @@ class GeneratorHelpers {
         }
     }
 
-
-    public static function map(\Generator $generator, $callback = null, $withKeys = false) {
+    public static function mapWithKeys(\Generator $generator, $callback = null) {
         $callback = SelectorHelpers::selector($callback);
         $index = 0;
         foreach ($generator as $key => $item) {
-            yield  ($withKeys ? $key : $index) => $callback($item, $key, $index);
+            $result = $callback($item, $key, $index);
+            if (is_array($result) && !empty($result)) {
+                $resultKey = array_keys($result)[0];
+                $resultValue = array_values($result)[0];
+            } else {
+                $resultKey = $key;
+                $resultValue = $result;
+            }
+            yield  $resultKey => $resultValue;
+            $index++;
+        }
+    }
+
+    public static function map(\Generator $generator, $callback = null, $associative = false) {
+        $callback = SelectorHelpers::selector($callback);
+        $index = 0;
+        foreach ($generator as $key => $item) {
+            yield  ($associative ? $key : $index) => $callback($item, $key, $index);
             $index++;
         }
     }
@@ -298,22 +314,20 @@ class GeneratorHelpers {
 
     }
 
-    public static function append(\Generator $generator, $values) {
-        yield from $generator;
-        yield from $values;
-    }
-
     public static function splice(\Generator $generator, $offset, $length, $replacement = null) {
         for ($atIndex = 0; $atIndex < $offset; $atIndex++) {
             yield $generator->current();
             $generator->next();
         }
-        yield from $replacement ?? [];
-
+        foreach ($replacement ?? [] as $value) {
+            yield $value;
+        }
         for ($skipped = 0; $skipped < $length; $skipped++) {
             $generator->next();
         }
-        yield from $generator;
+        foreach ($generator as $value) {
+            yield $value;
+        }
     }
 
     public static function slice(\Generator $generator, $offset, $length) {
@@ -355,8 +369,8 @@ class GeneratorHelpers {
         foreach ($generator as $key => $value) {
             if (array_key_exists($key, $array)) {
                 unset($array[$key]);
-                yield $key => $value;
             }
+            yield $key => $value;
         }
         yield from $array;
     }
@@ -373,7 +387,7 @@ class GeneratorHelpers {
             if (!array_key_exists($key, $array) && !$ignoreMismatches) {
                 throw new MismatchException("Given array does not match all keys in the generator");
             } else {
-                yield $item => $array[$key];
+                yield [ $item, $array[$key] ];
             }
         }
     }

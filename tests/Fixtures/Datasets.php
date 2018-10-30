@@ -7,7 +7,7 @@ use Tests\Helpers\TestHelper;
 
 class Datasets {
 
-    public static $testCaseCount = 15;
+    public static $testCaseCount = 25;
     public static $datasetSize = 100;
 
 
@@ -33,6 +33,12 @@ class Datasets {
     public function combineDataset() {
         return [
             [["a", "b", "c"], [1, 2, 3], ["a" => 1, "b" => 2, "c" => 3]]
+        ];
+    }
+
+    public function booleanDataset() {
+        return [
+            [ true ], [ false ]
         ];
     }
 

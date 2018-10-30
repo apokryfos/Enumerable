@@ -253,7 +253,8 @@ class BasicEnumerableTest extends TestCase {
         $e = new Enumerable($dataset);
         $key = Generator::randomValue();
         $v = Generator::randomValue();
-        $expected = $dataset + [ $key => $v ];
+        $expected = $dataset;
+        $expected[$key] = $v;
         $this->assertEquals($expected, $e->put($key, $v)->all());
 
     }
@@ -748,5 +749,164 @@ class BasicEnumerableTest extends TestCase {
             ]);
         }
     }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDataset()
+     * @param array $dataset
+     */
+    public function testMapSpread(...$dataset) {
+        $realDataset = array_map(function () {
+            return Generator::randomNumbersArray();
+        }, $dataset);
+
+        $callback = function (...$values) {
+            $weightedSum = 0;
+            foreach ($values as $k=>$v) {
+                $weightedSum += $k*$v;
+            }
+            return $weightedSum;
+        };
+
+        $expected = array_map(function ($array) use ($callback) {
+            return $callback(...$array);
+        }, $realDataset);
+
+        $this->assertEquals($expected, Enumerable::wrap($realDataset)->mapSpread($callback)->all());
+
+
+    }
+
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomComplexDataset()
+     * @param array $dataset
+     */
+    public function testMapWithKeys(...$dataset) {
+        $expected = array_combine(array_column($dataset,'identifier'), $dataset);
+
+        $this->assertEquals($expected, Enumerable::wrap($dataset)->mapWithKeys(function ($value) {
+            return [ $value["identifier"] => $value ];
+        })->all());
+
+
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDataset()
+     * @param array $dataset
+     */
+    public function testSlice(...$dataset) {
+        $expected = array_slice($dataset, 3, 8);
+
+        $this->assertEquals($expected, Enumerable::wrap($dataset)->slice(3,8)->all());
+
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDataset()
+     * @param array $dataset
+     */
+    public function testSplice(...$dataset) {
+        $expected = $dataset;
+        array_splice($expected, 3, 3, [ 'AAAAA' ]);
+
+        $this->assertEquals($expected, Enumerable::wrap($dataset)->splice(3,3, [ 'AAAAA' ])->all());
+
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDataset()
+     * @param array $dataset
+     */
+    public function testTap(...$dataset) {
+        $expected = Enumerable::wrap($dataset);
+
+        $this->assertEquals($expected, $expected->tap(function () {
+            // noop
+        }));
+    }
+
+    public function testUnion() {
+        $first = [
+            'a' => 1, 'c' => 3
+        ];
+        $second = [
+            'b' => 2, 'c' => 10
+        ];
+
+        $expected = [
+            'a' => 1, 'b' => 2, 'c' => 3
+        ];
+
+        $this->assertEquals($expected, Enumerable::wrap($first)->union($second)->all());
+
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDataset()
+     * @param array $dataset
+     */
+    public function testTimes(...$dataset) {
+        $r = rand();
+        $callback = function ($i) use ($r) {
+            return $i + $r;
+        };
+        $expected = array_map($callback, range(0, count($dataset)-1));
+        $this->assertEquals($expected, Enumerable::times(count($dataset), $callback)->all());
+
+    }
+
+    public function testWhenUnless() {
+
+        $c = function (Enumerable $e) {
+            $e->push(1);
+        };
+
+        $e = Enumerable::make();
+        $this->assertEquals([1], $e->when(true, $c)->all());
+        $e = Enumerable::make();
+        $this->assertEquals([], $e->unless(true, $c)->all());
+        $e = Enumerable::make();
+        $this->assertEquals([], $e->when(false, $c)->all());
+        $e = Enumerable::make();
+        $this->assertEquals([1], $e->unless(false, $c)->all());
+
+    }
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDataset()
+     * @param array $dataset
+     */
+    public function testUnwrap(...$expected) {
+        $this->assertEquals($expected, Enumerable::unwrap($expected));
+    }
+
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomNumbersDataset()
+     * @param array $dataset
+     */
+    public function testZip(...$dataset) {
+        $other = Generator::randomNumbersArray(count($dataset));
+        shuffle($other);
+        $expected = [];
+        foreach ($dataset as $key => $value) {
+            $expected[$key] = [ $value, $other[$key] ];
+        }
+
+        $this->assertEquals($expected, Enumerable::wrap($dataset)->zip($other)->all());
+    }
+
+
+    public function testInvalidHigherOrder() {
+        $array = Generator::randomArray();
+        $e = Enumerable::wrap($array);
+
+        $this->expectException(\BadMethodCallException::class);
+
+        $e->zip->zoom;
+    }
+
+
 
 }

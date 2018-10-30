@@ -5,6 +5,7 @@ use Apokryfos\Helpers\EventEmitter;
 use Apokryfos\Helpers\GeneratorHelpers;
 use Apokryfos\Helpers\HigherOrderProxy;
 use Apokryfos\Helpers\SelectorHelpers;
+use Tests\Fixtures\Generator;
 
 
 /**
@@ -371,7 +372,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
     }
 
     public function mapWithKeys($callback = null) {
-        $this->generator = GeneratorHelpers::map($this->generator, $callback, true);
+        $this->generator = GeneratorHelpers::mapWithKeys($this->generator, $callback);
         return $this;
     }
 
@@ -520,8 +521,22 @@ class Enumerable implements \Iterator, \JsonSerializable {
         return $first;
     }
 
+    /**
+     * Extract a slice of the array
+     * It works like the built-in array slice when used with positive parameters
+     * Negative values not supproted.
+     *
+     * @param $from Start from index (must be positive)
+     * @param $size Size of the slice (must be positive)
+     * @return $this
+     *
+     */
     public function slice($from, $size) {
+        $isAssociative = $this->key() !== 0;
         $this->generator = GeneratorHelpers::slice($this->generator, $from, $size);
+        if (!$isAssociative) {
+            $this->generator = GeneratorHelpers::asNonAssociativeArray($this->generator);
+        }
         return $this;
     }
 
