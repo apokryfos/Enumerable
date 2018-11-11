@@ -1,11 +1,10 @@
 <?php
 
 namespace Apokryfos;
-use Apokryfos\Helpers\EventEmitter;
+
 use Apokryfos\Helpers\GeneratorHelpers;
 use Apokryfos\Helpers\HigherOrderProxy;
 use Apokryfos\Helpers\SelectorHelpers;
-use Tests\Fixtures\Generator;
 
 
 /**
@@ -28,7 +27,6 @@ class Enumerable implements \Iterator, \JsonSerializable {
 
 
     protected $generator;
-    protected $inner;
 
     protected static $higherOrderMethods = [
         'average', 'avg', 'each', 'every', 'filter',
@@ -50,16 +48,27 @@ class Enumerable implements \Iterator, \JsonSerializable {
         $this->generator = GeneratorHelpers::asGenerator($inner);
     }
 
-
+    /**
+     * Get the underlying generator for iterating
+     * @return \Generator
+     */
     public function stream() {
         yield from $this->generator;
     }
 
+    /**
+     * Get the underlying generator as an array
+     * @return array
+     */
     public function all() {
         $array = iterator_to_array($this->generator);
         return $array;
     }
 
+    /**
+     * Get the underlying generator as an array. This is recursive.
+     * @return array
+     */
     public function toArray() {
         $array = GeneratorHelpers::generatorToArray($this->generator);
         return $array;
@@ -135,40 +144,92 @@ class Enumerable implements \Iterator, \JsonSerializable {
         return $this->merge($values);
     }
 
-    public function merge($values, $assoc = false) {
-        $this->generator = GeneratorHelpers::merge($this->generator, $values, $assoc);
+    /**
+     * Merges this enumerable with an iterable value.
+     * Behaviour matches @see array_merge
+     * @param $values
+     * @param bool $assoc
+     * @return $this
+     */
+    public function merge($values) {
+        $this->generator = GeneratorHelpers::merge($this->generator, $values);
         return $this;
     }
 
+
+    /**
+     * Puts the given value with given key in this enumerable
+     * @param string|number $key
+     * @param mixed $value
+     * @return Enumerable
+     */
     public function put($key, $value) {
-        return $this->merge([$key => $value], true);
+        $this->generator = GeneratorHelpers::merge($this->generator, [ $key => $value ], false);
+        return $this;
     }
 
+    /**
+     * Puts the given value in this enumerable.
+     * @param $value
+     * @return Enumerable
+     */
     public function push($value) {
-        return $this->merge([$value]);
+        $this->generator = GeneratorHelpers::merge($this->generator, [ $value ]);
+        return $this;
     }
 
-
+    /**
+     * Gets the cartessian product between this enumerable and all iterables provided
+     * @param iterable[]|array[] ...$values
+     * @return Enumerable
+     */
     public function crossJoin(...$values) {
         $this->generator = GeneratorHelpers::crossJoin($this->generator, ...$values);
         return $this;
     }
 
+    /**
+     * Computes the set difference between this enumerable and all iterables provided.
+     * Contents should match @see array_diff
+     *
+     * @param mixed ...$values
+     * @return $this
+     */
     public function diff(...$values) {
         $this->generator = GeneratorHelpers::diff($this->generator, GeneratorHelpers::ONLY_VALUE,...$values);
         return $this;
     }
 
+    /**
+     * Computes the set difference between this enumerable and all iterables provided.
+     * Contents should match @see array_diff_assoc
+     *
+     * @param mixed ...$values
+     * @return $this
+     */
     public function diffAssoc(...$values) {
         $this->generator = GeneratorHelpers::diff($this->generator, GeneratorHelpers::BOTH,...$values);
         return $this;
     }
 
+    /**
+     * Computes the set difference between the keys of this enumerable and the keys of all iterables provided.
+     * Contents should match @see array_diff_key
+     *
+     * @param mixed ...$values
+     * @return $this
+     */
     public function diffKeys(...$values) {
         $this->generator = GeneratorHelpers::diff($this->generator, GeneratorHelpers::ONLY_KEY,...$values);
         return $this;
     }
 
+    /**
+     * Perform a function over each element of this enumerable
+     *
+     * @param callable $callback
+     * @return Enumerable
+     */
     public function each(callable $callback) {
         foreach ($this->generator as $key => $value) {
             if ($callback($value, $key) === false) {
@@ -178,36 +239,90 @@ class Enumerable implements \Iterator, \JsonSerializable {
         return $this;
     }
 
+    /**
+     * Perform a function over each element of this enumerable.
+     * The function may take a number of parameters that match each element's iterable contents.
+     *
+     *
+     * @param callable $callback
+     * @return Enumerable
+     */
     public function eachSpread(callable $callback) {
         foreach ($this->generator as $value) {
             if (call_user_func_array($callback, self::wrap($value)->values()->all()) === false) {
                 break;
             }
         }
+        return $this;
     }
 
+    /**
+     * Omits the keys given in the array of keys
+     *
+     * @param array $keys
+     * @return Enumerable
+     */
     public function except($keys) {
         return $this->diffKeys(array_flip($keys));
     }
 
+    /**
+     * Keeps only the keys given in the array of keys
+     *
+     * @param array $keys
+     * @return Enumerable
+     */
     public function only($keys) {
         return $this->intersectByKeys(array_flip($keys));
     }
 
+    /**
+     * Filter this enumerable by a gven callback
+     * Should match @see array_filter
+     *
+     * @param array $keys
+     * @return Enumerable
+     */
     public function filter($callback = null) {
         $this->generator = GeneratorHelpers::filter($this->generator, $callback);
         return $this;
     }
 
+    /**
+     * Filter this enumerable by the given SQL-like operation
+     *
+     * @param string|callable $keySelector Key within each element. Can be the result function taking the current value and key as parameters.
+     * @param null $operator Operator (i.e. = or > )
+     * @param null $valueSelector Value to compare with.
+     * @return Enumerable
+     */
     public function where($keySelector, $operator = null, $valueSelector = null) {
         $args = SelectorHelpers::normalizeWhereArguments(...func_get_args());
         return $this->filter(SelectorHelpers::whereSelector(...$args));
     }
+
+    /**
+     * Filter this enumerable by the given SQL-like operation.
+     * Same as @see Enumerable::where but using === instead of == and !== instead of !=
+     *
+     * @param string|callable $keySelector Key within each element. Can be the result function taking the current value and key as parameters.
+     * @param null $operator Operator (i.e. = or > )
+     * @param null $valueSelector Value to compare with.
+     * @return Enumerable
+     */
     public function whereStrict($keySelector, $operator = null, $valueSelector = null) {
         $args = SelectorHelpers::normalizeWhereArguments(...func_get_args());
         return $this->filter(SelectorHelpers::whereSelector(...array_merge($args, [ true ])));
     }
 
+    /**
+     * Filter this enumerable and only keep values that are contained within a given array.
+     *
+     * @param string|callable $keySelector Key within each element. Can be the result function taking the current value and key as parameters.
+     * @param array $array The array to check
+     * @param bool $strict Use strict comparison (i.e. === on each element of the array and enumerable key selector result).
+     * @return Enumerable
+     */
     public function whereIn($keySelector, $array, $strict = false, $negate = false) {
         $selector = SelectorHelpers::selector($keySelector);
         return $this->filter(function ($value, $key) use ($selector, $array, $strict, $negate) {
@@ -526,8 +641,8 @@ class Enumerable implements \Iterator, \JsonSerializable {
      * It works like the built-in array slice when used with positive parameters
      * Negative values not supproted.
      *
-     * @param $from Start from index (must be positive)
-     * @param $size Size of the slice (must be positive)
+     * @param int $from Start from index (must be positive)
+     * @param int $size Size of the slice (must be positive)
      * @return $this
      *
      */

@@ -7,8 +7,6 @@ use Apokryfos\Enumerable;
 use Apokryfos\Exceptions\CombineSizeMismatchException;
 use Apokryfos\Helpers\SelectorHelpers;
 use PHPUnit\Framework\TestCase;
-use Symfony\Component\VarDumper\Cloner\Data;
-use Tests\Fixtures\Datasets;
 use Tests\Fixtures\Generator;
 use Tests\Helpers\TestHelper;
 use Tests\Helpers\TestObject;
@@ -145,6 +143,19 @@ class BasicEnumerableTest extends TestCase {
         $this->assertEquals(array_merge($a,$b), $e->merge($b)->toArray());
     }
 
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomAssociativeStringDataset()
+     * @param array $dataset
+     */
+
+    public function testMergeAssoc($dataset) {
+        $array2 = Generator::randomKeyedArray()[0];
+
+        $e = new Enumerable($dataset);
+        $this->assertEquals(array_merge($dataset,$array2), $e->merge($array2)->all());
+    }
+
     /**
      * @dataProvider \Tests\Fixtures\Datasets::randomPair
      * @param $a
@@ -180,6 +191,18 @@ class BasicEnumerableTest extends TestCase {
         $this->assertEquals($expected, $e->diff($b,$c)->all());
     }
 
+
+    /**
+     * @dataProvider \Tests\Fixtures\Datasets::randomSmallNumbersDataset()
+     */
+    public function testDiffRandom(...$smallNumbers) {
+        $e = new Enumerable($smallNumbers);
+        $other = Generator::randomSmallNumbersArray();
+        $other2 = Generator::randomSmallNumbersArray();
+        $expected = array_diff($smallNumbers, $other, $other2);
+
+        $this->assertEquals($expected, $e->diff($other, $other2)->all());
+    }
 
     /**
      * @dataProvider \Tests\Fixtures\Datasets::diffAssocDataset
@@ -741,6 +764,11 @@ class BasicEnumerableTest extends TestCase {
         $result = Enumerable::wrap($dataset)->mapInto(TestObject::class, function ($data) {
             return array_values($data);
         });
+
+        /**
+         * @var int|string $index
+         * @var TestObject $object
+         */
         foreach ($result as $index => $object) {
             $this->assertInstanceOf(TestObject::class, $object);
             $this->assertEquals($dataset[$index], [

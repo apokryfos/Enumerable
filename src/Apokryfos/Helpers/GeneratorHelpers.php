@@ -14,10 +14,6 @@ class GeneratorHelpers {
     const ONLY_KEY = 0b10;
     const BOTH = 0b11;
 
-    public static function chain($generator): GeneratorChain {
-        return new GeneratorChain($generator);
-    }
-
     public static function asGenerator($iterable) {
         yield from $iterable;
     }
@@ -125,19 +121,20 @@ class GeneratorHelpers {
         }
     }
 
-    public static function merge(\Generator $generator, $values, $assoc = false) {
+    public static function merge(\Generator $generator, $values, $renumber = true) {
+        $index = 0;
         foreach ($generator as $key => $value) {
-            if ($assoc) {
-                yield $key => $value;
+            if (is_int($key) && $renumber) {
+                yield $index++ => $value;
             } else {
-                yield $value;
+                yield $key => $value;
             }
         }
         foreach ($values as $key => $value) {
-            if ($assoc) {
-                yield $key => $value;
+            if (is_int($key) && $renumber) {
+                yield $index++ => $value;
             } else {
-                yield $value;
+                yield $key => $value;
             }
         }
     }
@@ -293,6 +290,8 @@ class GeneratorHelpers {
             yield $callback($item, $key) => $item;
         }
     }
+
+
 
     public static function prepend(\Generator $generator, $values) {
         $assoc = true;
