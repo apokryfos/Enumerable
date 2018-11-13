@@ -5,7 +5,7 @@ namespace Apokryfos\Helpers;
 
 class SelectorHelpers {
 
-    private static $pemittedOperators = [
+    private static $permittedOperators = [
        "==" => 1, "===" => 1, ">=" => 1, "<=" => 1, ">" => 1, "<" => 1, "!=" => 1, "!==" => 1
     ];
 
@@ -19,7 +19,7 @@ class SelectorHelpers {
             $value = $operator;
             $operator = "==";
         }
-        if (!array_key_exists($operator, self::$pemittedOperators)) {
+        if (!array_key_exists($operator, self::$permittedOperators)) {
             $operator == "==";
         }
         return [ $key, $operator, $value ];
@@ -36,7 +36,7 @@ class SelectorHelpers {
             $operator = $strictRemap[$operator] ?? $operator;
         }
 
-        $operator = $operator && array_key_exists($operator, self::$pemittedOperators) ? $operator : "==";
+        $operator = $operator && array_key_exists($operator, self::$permittedOperators) ? $operator : "==";
         return function ($value, $key) use ($keySelector, $operator, $compareValue) {
             $selectedLHS = $keySelector($value,  $key);
 

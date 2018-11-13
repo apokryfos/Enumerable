@@ -148,7 +148,6 @@ class Enumerable implements \Iterator, \JsonSerializable {
      * Merges this enumerable with an iterable value.
      * Behaviour matches @see array_merge
      * @param $values
-     * @param bool $assoc
      * @return $this
      */
     public function merge($values) {
@@ -179,7 +178,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
     }
 
     /**
-     * Gets the cartessian product between this enumerable and all iterables provided
+     * Gets the cartesian product between this enumerable and all iterables provided
      * @param iterable[]|array[] ...$values
      * @return Enumerable
      */
@@ -280,7 +279,7 @@ class Enumerable implements \Iterator, \JsonSerializable {
      * Filter this enumerable by a gven callback
      * Should match @see array_filter
      *
-     * @param array $keys
+     * @param callable|null $callback
      * @return Enumerable
      */
     public function filter($callback = null) {
@@ -331,22 +330,57 @@ class Enumerable implements \Iterator, \JsonSerializable {
         });
     }
 
+    /**
+     * Filter this enumerable and only keep values that are contained within a given array.
+     * The reverse of @see whereIn
+     *
+     * @param string|callable $keySelector The key selector. Can be a string key or a function to determine what to select
+     * @param array $array The values to find
+     * @param bool $strict Whether or not strict comparison should be used
+     * @return Enumerable
+     */
     public function whereNotIn($keySelector, $array, $strict = false) {
         return $this->whereIn($keySelector, $array, $strict, true);
     }
 
+    /**
+     * Shortcut to @see whereNot with the $strict parameter being true
+     *
+     * @param string|callable $keySelector
+     * @param array $array
+     * @return Enumerable
+     */
     public function whereNotInStrict($keySelector, $array) {
         return $this->whereNotIn($keySelector, $array, true);
     }
 
+    /**
+     * Shortcut to the @see whereIn with the $strict parameter being true
+     *
+     * @param string|callable $keySelector
+     * @param array $array
+     * @return Enumerable
+     */
     public function whereInStrict($keySelector, $array) {
         return $this->whereIn($keySelector, $array, true);
     }
 
+    /**
+     * Gets all members of the enumerable which are of type $class
+     *
+     * @param string $class
+     * @return Enumerable
+     */
     public function whereInstanceOf($class) {
         return $this->filter(SelectorHelpers::instanceOfSelector($class));
     }
 
+    /**
+     * Checks whether the given truth test passes for every item.
+     *
+     * @param null $callback
+     * @return bool
+     */
     public function every($callback = null) {
         $callback = SelectorHelpers::selector($callback);
         foreach ($this->stream() as $key => $item) {
@@ -357,6 +391,11 @@ class Enumerable implements \Iterator, \JsonSerializable {
         return true;
     }
 
+    /**
+     * Get the next value of the enumerable without progressing the iteration
+     *
+     * @return array|null If the result is null then the enumerable is empty. The result is of the form [ $value, $key ]
+     */
     public function peek() {
         if (!$this->generator->valid() || $this->generator->key() === null) {
             return null;
@@ -366,11 +405,16 @@ class Enumerable implements \Iterator, \JsonSerializable {
         return [ $value, $key ];
     }
 
-
+    /**
+     * Gets the nth element. If n is larger than the size of the enumerable it returns the last element.
+     *
+     * @param int $n
+     * @return array|null
+     */
     public function nthElement(int $n) {
         $nth = null;
         $seen = 0;
-        foreach ($this->generator as $key => $value) {
+        foreach ($this->stream() as $key => $value) {
             $nth = [$value, $key];
             $seen++;
             if ($seen === $n) {
@@ -380,45 +424,99 @@ class Enumerable implements \Iterator, \JsonSerializable {
         return $nth;
     }
 
+    /**
+     * Get the first element which passes a given truth test. Parameters are similar to @see where
+     *
+     * @param null $callback If this is a string then it refers to a key of the given name in each enumerable element. If this is a callable it is the value selector applied on each element.
+     * @param null $operator if the first parameter is a string then this is the comparison operator. If omitted it defaults to "=="
+     * @param null $valueSelector The value to compare against
+     * @return mixed
+     */
     public function first($callback = null, $operator = null, $valueSelector = null) {
         list($element) = $this->where($callback, $operator, $valueSelector)->nthElement(1);
         return $element;
     }
 
+    /**
+     * Alias of @see first
+     */
     public function firstWhere($callback = null, $operator = null, $valueSelector = null) {
         return $this->first($callback, $operator, $valueSelector);
     }
 
+    /**
+     * Transforms each element of the stream to a new element
+     *
+     * @param callable|null $callback
+     * @return $this
+     */
     public function map($callback = null) {
         $this->generator = GeneratorHelpers::map($this->generator, $callback);
         return $this;
     }
 
+    /**
+     * Swaps keys with values in this enumerable. Should match @see array_flip()
+     *
+     * @return $this
+     */
     public function flip() {
         $this->generator = GeneratorHelpers::flip($this->generator);
         return $this;
     }
 
+    /**
+     * Reduce the nesting of the enumerable by the given number of levels.
+     * Recuces array dimensions by $levels
+     *
+     * @param null|int $levels The levels to de-nest. Null means as many as possible
+     * @return $this
+     */
     public function flatten($levels = null) {
         $this->generator = GeneratorHelpers::flatten($this->generator, false, $levels);
         return $this;
     }
 
+    /**
+     * Maps the values in the enumerable to a new form and then flattens the result by 1 level
+     *
+     * @param $callback
+     * @return $this
+     */
     public function flatMap($callback) {
         return $this->map($callback)
             ->flatten(1);
     }
 
+    /**
+     * Remove a given key from the enumerable
+     *
+     * @param $key
+     * @return Enumerable
+     */
     public function forget($key) {
         return $this->except([$key]);
     }
 
+    /**
+     * Get the value corresponding to the given key
+     *
+     * @param string|int $key
+     * @return mixed
+     */
     public function get($key) {
         return $this->first(function ($v, $k) use ($key) {
             return $key === $k;
         }, null, null);
     }
 
+    /**
+     * Checks whether the enumerable contains the given key
+     *
+     * @param string|int $key The key to look for
+     * @param bool $allowNullValue If this is true return true if the key exists, if this is false returl true if the key exists and the corresponding value is not null
+     * @return bool
+     */
     public function has($key, $allowNullValue = true) {
         foreach ($this->stream() as $k => $value) {
             if ($key === $k && ($allowNullValue || $value !== null)) {
@@ -428,35 +526,71 @@ class Enumerable implements \Iterator, \JsonSerializable {
         return false;
     }
 
-    public function implode(string $character) {
+    /**
+     * Concatenate the string using a given character as a separator
+     * Matches @see implode()
+     *
+     * @param string $character The character to use
+     * @return mixed
+     */
+    public function implode(string $character = '') {
         return $this->reduce(function ($current, $value) use ($character) {
             return $current === null ? strval($value) : $current.$character.strval($value);
         }, null);
     }
 
+    /**
+     * Filter by the values within this enumerable that are present in all other parameters
+     * @param array ...$values Values to intersect by
+     * @return $this
+     */
     public function intersect(...$values) {
         $this->generator = GeneratorHelpers::intersect($this->generator, GeneratorHelpers::ONLY_VALUE, ...$values);
         return $this;
     }
 
+    /**
+     * Filter by the keys within this enumerable that are present as keys in all other parameters
+     * @param array ...$values
+     * @return $this
+     */
     public function intersectByKeys(...$values) {
         $this->generator = GeneratorHelpers::intersect($this->generator, GeneratorHelpers::ONLY_KEY, ...$values);
         return $this;
     }
 
+    /**
+     * Check whether the enumerable is empty
+     * @return bool True if empty false if not empty
+     */
     public function isEmpty() {
         return $this->peek() === null;
     }
 
+    /***
+     * Check whether the enumerable is not empty. Inverse of @see isEmpty
+     * @return bool False if empty true if not empty.
+     */
     public function isNotEmpty() {
         return !$this->isEmpty();
     }
 
+    /**
+     * Key this enumerable the result of a given callback.
+     *
+     * @param null|callable $callback
+     * @return $this
+     */
     public function keyBy($callback = null) {
         $this->generator = GeneratorHelpers::keyBy($this->generator, SelectorHelpers::selector($callback));
         return $this;
     }
 
+    /**
+     * Get the keys of the given enumerable
+     *
+     * @return $this
+     */
     public function keys() {
         $this->generator = GeneratorHelpers::keys($this->generator);
         return $this;
